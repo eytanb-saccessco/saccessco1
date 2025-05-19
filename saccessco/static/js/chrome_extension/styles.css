@@ -1,0 +1,89 @@
+/* styles.css */
+#floating-mic-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.3s ease;
+}
+
+.mic-inactive {
+  background-color: #4CAF50; /* Green */
+  color: white;
+}
+
+.mic-active {
+  background-color: #f44336; /* Red */
+  color: white;
+}
+
+#saccessco-chat-container {
+  position: fixed;
+  bottom: 80px; /* Adjust to be above the mic button */
+  left: 20px;
+  z-index: 10001;
+  width: 300px;
+  height: 300px;
+  border: 1px solid #ccc;
+  background-color: #f9f9f9;
+  overflow-y: auto;
+  padding: 10px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+}
+
+#saccessco-chat-container > div {
+  margin-bottom: 5px;
+  padding: 5px;
+  border-radius: 4px;
+  background-color: #fff;
+  word-break: break-word;
+}
+
+#saccessco-chat-container > div:nth-child(odd) {
+  background-color: #eee;
+}
+
+#saccessco-chat-input-area {
+  display: flex;
+  margin-top: 10px;
+}
+
+#saccessco-chat-input {
+  flex-grow: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+#saccessco-chat-button {
+  padding: 8px 12px;
+  margin-left: 5px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#saccessco-chat-button:hover {
+  background-color: #0056b3;
+}
+
+#saccessco-chat-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+  background-color: #ddd;
+  border: 1px solid #ccc;
+  cursor: nwse-resize;
+}
