@@ -10,9 +10,9 @@
     recognition: null,
     _listeningBeforeSpeak: false,
     silenceTimeoutId: null,
-    silenceTimeoutDuration: 1500, // Adjust as needed (milliseconds)
+    silenceTimeoutDuration: 2000, // Adjust as needed (milliseconds)
     listenTimeoutId: null,
-    listenTimeoutDuration: 10000, // Maximum listening time without a final result (milliseconds)
+    listenTimeoutDuration: 6000, // Maximum listening time without a final result (milliseconds)
     finalTranscript: '',
     timeoutCallback: null, // New callback for timeout
     pendingConfirmationResolver: null, // Resolver for askConfirmation promise
@@ -165,57 +165,65 @@
       }
     },
 
-    speak(text, onEndCallback = null) {
+    speak(text) { // Remove onEndCallback from signature if you use Promise for completion
       if (!synthesis) {
         console.error('Speech synthesis not supported.');
-        if (onEndCallback) onEndCallback();
-        return;
+        // If not supported, we can immediately resolve or reject the promise
+        return Promise.reject(new Error('Speech synthesis not supported.'));
       }
 
-      // Stop listening before speaking
-      if (this.isListening) {
-        this._listeningBeforeSpeak = true;
-        this.stopListening();
-      } else {
-        this._listeningBeforeSpeak = false;
-      }
-
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.onend = () => {
-        console.log('Speech synthesis finished.');
-        if (onEndCallback) onEndCallback();
-        // Resume listening if it was active before speaking
-        if (this._listeningBeforeSpeak) {
-          this.listen(this.callBack, this.timeoutCallback); // Restart listening with the same callbacks
-          this._listeningBeforeSpeak = false;
-        }
-      };
-      utter.onerror = (error) => {
-        console.error('Speech synthesis error:', error);
-        if (this._listeningBeforeSpeak) {
-          this.listen(this.callBack, this.timeoutCallback);
-          this._listeningBeforeSpeak = false;
-        }
-        if (onEndCallback) onEndCallback(error);
-      };
-      synthesis.speak(utter);
-    },
-
-    async askConfirmation(prompt) {
-      return new Promise((resolve) => {
-        this.pendingConfirmationResolver = resolve;
-        this.speak(prompt + ". Please respond with 'yes' or 'no'.", () => {
-          // Start listening after the prompt is spoken
-          if (!this.isListening) {
-            this.listen(this._confirmationCallback.bind(this), () => {
-              // Timeout callback for confirmation
-              if (this.pendingConfirmationResolver) {
-                this.pendingConfirmationResolver(null);
-                this.pendingConfirmationResolver = null;
-              }
-            });
+      return new Promise((resolve, reject) => { // <-- ADD THIS Promise WRAPPER
+          // Stop listening before speaking
+          if (this.isListening) {
+            this._listeningBeforeSpeak = true;
+            this.stopListening();
+          } else {
+            this._listeningBeforeSpeak = false;
           }
-        });
+
+          const utter = new SpeechSynthesisUtterance(text);
+          utter.onend = () => {
+            console.log('Speech synthesis finished.');
+            // Resume listening if it was active before speaking
+            if (this._listeningBeforeSpeak) {
+              this.listen(this.callBack, this.timeoutCallback);
+              this._listeningBeforeSpeak = false;
+            }
+            resolve(); // <-- Resolve the Promise on end
+          };
+          utter.onerror = (event) => {
+            console.error('Speech synthesis error:', event);
+            if (this._listeningBeforeSpeak) {
+              this.listen(this.callBack, this.timeoutCallback);
+              this._listeningBeforeSpeak = false;
+            }
+            reject(new Error(event.error || 'Speech synthesis error')); // <-- Reject on error
+          };
+          synthesis.speak(utter);
+      });
+    },
+    async askConfirmation(prompt) {
+      return new Promise(async (resolve) => { // Use async here too
+        this.pendingConfirmationResolver = resolve;
+        try {
+            await this.speak(prompt + ". Please respond with 'yes' or 'no'.");
+            // Start listening after the prompt is spoken
+            if (!this.isListening) {
+                this.listen(this._confirmationCallback.bind(this), () => {
+                    // Timeout callback for confirmation
+                    if (this.pendingConfirmationResolver) {
+                        this.pendingConfirmationResolver(null);
+                        this.pendingConfirmationResolver = null;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error("Error speaking confirmation prompt:", error);
+            if (this.pendingConfirmationResolver) {
+                this.pendingConfirmationResolver(null); // Resolve with null on speak error
+                this.pendingConfirmationResolver = null;
+            }
+        }
       });
     },
 
@@ -229,17 +237,26 @@
           this.pendingConfirmationResolver(false);
           this.pendingConfirmationResolver = null;
         } else {
-          this.speak("Sorry, I didn't understand. Please respond with 'yes' or 'no'.", () => {
-            // Re-listen if not understood
-            if (!this.isListening) {
-              this.listen(this._confirmationCallback.bind(this), () => {
-                if (this.pendingConfirmationResolver) {
-                  this.pendingConfirmationResolver(null);
-                  this.pendingConfirmationResolver = null;
-                }
+          // No need for a callback here if speak returns a promise
+          this.speak("Sorry, I didn't understand. Please respond with 'yes' or 'no'.")
+              .then(() => {
+                  // Re-listen if not understood
+                  if (!this.isListening) {
+                      this.listen(this._confirmationCallback.bind(this), () => {
+                          if (this.pendingConfirmationResolver) {
+                              this.pendingConfirmationResolver(null);
+                              this.pendingConfirmationResolver = null;
+                          }
+                      });
+                  }
+              })
+              .catch(error => {
+                  console.error("Error re-speaking prompt:", error);
+                  if (this.pendingConfirmationResolver) {
+                      this.pendingConfirmationResolver(null);
+                      this.pendingConfirmationResolver = null;
+                  }
               });
-            }
-          });
         }
       }
     },

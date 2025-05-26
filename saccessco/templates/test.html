@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Test Page</title>
+    <script type="module" src="/static/js/chrome_extension/page_manipulator.js"></script>
+    <script type="module" src="/static/js/chrome_extension/backend_communicator.js"></script>
+    <script type="module" src="/static/js/chrome_extension/speech.js"></script>
+    <script type="module" src="/static/js/chrome_extension/page_change_observer.js"></script>
+    <script type="module" src="/static/js/chrome_extension/configuration.js"></script>
+  </head>
+  <body>
+    <input type="text" name="data" id="data" />
+    <select id="country">
+      <option value="US">United States</option>
+      <option value="CA">Canada</option>
+      <option value="GB">United Kingdom</option>
+    </select>
+    <button id="login">Login</button>
+
+    <form id="loginForm">
+      <input type="text" name="username" id="username" />
+
+      <!-- Added Checkbox -->
+      <label for="terms">Agree to terms:</label>
+      <input type="checkbox" name="terms" id="terms" />
+
+      <!-- Added Radio Buttons -->
+      <label for="male">Male</label>
+      <input type="radio" name="gender" id="male" value="male">
+      <label for="female">Female</label>
+      <input type="radio" name="gender" id="female" value="female">
+
+      <button type="submit">Submit</button>
+    </form>
+
+    <script>
+      // Expose global variables for testing.
+      window.clicked = false;
+      window.submitted = false;
+
+      // Set up event listeners.
+      document.addEventListener("DOMContentLoaded", () => {
+        const loginButton = document.getElementById("login");
+        if (loginButton) {
+          loginButton.addEventListener("click", () => {
+            window.clicked = true;
+            console.log("Login button clicked; clicked =", window.clicked);
+          });
+        }
+        const loginForm = document.getElementById("loginForm");
+        if (loginForm) {
+          loginForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            window.submitted = true;
+            console.log("Form submitted; submitted =", window.submitted);
+          });
+        }
+      });
+
+      // Global error collector.
+      window.jsErrors = [];
+      window.onerror = function(message, source, lineno, colno, error) {
+        window.jsErrors.push({
+          message: message,
+          source: source,
+          lineno: lineno,
+          colno: colno,
+          error: error ? error.toString() : null
+        });
+        return false;
+      };
+    </script>
+  </body>
+</html>

@@ -17,11 +17,11 @@ Including another URLconf
 # from django.contrib import admin
 from django.urls import path
 
-from saccessco.views import PageChangeAPIView, UserPromptAPIView
+from saccessco.views import PageChangeAPIView, UserPromptAPIView, TestHtmlView
 
 urlpatterns = [
     #    path('admin/', admin.site.urls),
     path('saccessco/user_prompt/', UserPromptAPIView.as_view(), name='user_prompt'),
     path('saccessco/page_change/', PageChangeAPIView.as_view(), name='page_change'),
-
+    path('test-page/', TestHtmlView.as_view(), name='test_page')
 ]

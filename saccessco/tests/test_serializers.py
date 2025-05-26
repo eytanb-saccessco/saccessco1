@@ -17,7 +17,8 @@ class PageChangeSerializerTests(TestCase):
         """
         Test serializer with valid data.
         """
-        data = {'html': '<html><body><h1>Test</h1></body></html>'}
+        data = {'html': '<html><body><h1>Test</h1></body></html>',
+                'conversation_id': 'test_conversation_id',}
         serializer = PageChangeSerializer(data=data)
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data, data)
@@ -36,7 +37,7 @@ class PageChangeSerializerTests(TestCase):
         """
         Test custom validation for empty 'html' string.
         """
-        data = {'html': ''}
+        data = {'html': '', 'conversation_id': 'test_conversation_id'}
         serializer = PageChangeSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('html', serializer.errors)
@@ -46,7 +47,7 @@ class PageChangeSerializerTests(TestCase):
         """
         Test custom validation for whitespace-only 'html' string.
         """
-        data = {'html': '   \n '}
+        data = {'html': '   \n ', 'conversation_id': 'test_conversation_id'}
         serializer = PageChangeSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('html', serializer.errors)
@@ -62,7 +63,7 @@ class UserPromptSerializerTests(TestCase):
         """
         Test serializer with valid data.
         """
-        data = {'prompt': 'Hello AI!'}
+        data = {'prompt': 'Hello AI!', 'conversation_id': 'test_conversation_id'}
         serializer = UserPromptSerializer(data=data)
         self.assertTrue(serializer.is_valid())
         self.assertEqual(serializer.validated_data, data)
@@ -71,7 +72,7 @@ class UserPromptSerializerTests(TestCase):
         """
         Test serializer when the 'prompt' key is missing.
         """
-        data = {'message': 'some_message'}
+        data = {'message': 'some_message', 'conversation_id': 'test_conversation_id'}
         serializer = UserPromptSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('prompt', serializer.errors)
@@ -81,7 +82,7 @@ class UserPromptSerializerTests(TestCase):
         """
         Test serializer when 'prompt' value is not a string.
         """
-        data = {'prompt': ['list', 'instead']}
+        data = {'prompt': ['list', 'instead'], 'conversation_id': 'test_conversation_id'}
         serializer = UserPromptSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('prompt', serializer.errors)
@@ -91,7 +92,7 @@ class UserPromptSerializerTests(TestCase):
         """
         Test custom validation for empty 'prompt' string.
         """
-        data = {'prompt': ''}
+        data = {'prompt': '', 'conversation_id': 'test_conversation_id'}
         serializer = UserPromptSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('prompt', serializer.errors)
@@ -101,7 +102,7 @@ class UserPromptSerializerTests(TestCase):
         """
         Test custom validation for whitespace-only 'prompt' string.
         """
-        data = {'prompt': ' \t '}
+        data = {'prompt': ' \t ', 'conversation_id': 'test_conversation_id'}
         serializer = UserPromptSerializer(data=data)
         self.assertFalse(serializer.is_valid())
         self.assertIn('prompt', serializer.errors)

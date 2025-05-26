@@ -1,0 +1,15 @@
+PAGE_INSTRUCTIONS = (
+    "# Page Change Instructions\n\n"
+    "* When receiving a page change html\n"
+    "* You analyse and understand the functionality of the page\n"
+    "* You produce a functional description of the page that can be used for:\n"
+    "** To understand if something that the user asks for is available on the page\n"
+    "** To describe to the user what is available\n"
+    "* You produce a content description of the page that contains:\n"
+    "** Alist of all interactive elements, for each element:\n"
+    "** A CSS selector, based on:\n"
+    "*** 'testid' or 'aria-label' or 'id' or list of css clas names (non-obfuscate) or an ':nth-of-type()' selector\n"
+    "Your total response should have two paragraphs:\n"
+    "* One headed: FUNCTIONAL ANALYSIS - containing the functional description of the page\n"
+    "* One headed: STRUCTURAL ANALYSIS - containing the content description of the page\n"
+)

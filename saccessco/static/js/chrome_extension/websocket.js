@@ -10,7 +10,17 @@ function initializeAIWebSocket() {
 
 class WebSocketAIReceiver {
     constructor() {
-        this.websocketUrl = window.configuration.SACCESSCO_WEBSOCKET_URL;
+        // Ensure window.configuration and SACCESSCO_WEBSOCKET_URL exist
+        if (!window.configuration || !window.configuration.SACCESSCO_WEBSOCKET_URL) {
+            console.error("WebSocketAIReceiver: window.configuration.SACCESSCO_WEBSOCKET_URL is not defined.");
+            // Handle this error appropriately, e.g., throw, or prevent connection
+            // For now, we'll return to prevent further errors.
+            return;
+        }
+
+        this.websocketUrl = window.configuration.SACCESSCO_WEBSOCKET_URL + "/" + window.conversation_id;
+        console.log(`WebSocketAIReceiver: Constructed WebSocket URL: ${this.websocketUrl}`);
+
 
         this.socket = null; // Will hold the WebSocket instance
         this.reconnectAttempts = 0;
@@ -22,15 +32,26 @@ class WebSocketAIReceiver {
         this.connect();
     }
     handleAiMessage(message) {
-        const data = JSON.parse(message);
-        console.log("AI response: " + data);
+        // This function expects a parsed JSON object, not a string that needs parsing.
+        // It's called from onMessage after JSON.parse(event.data).
+        const data = message; // 'message' is already the parsed object from onMessage
+        console.log("AI response (parsed object):", data);
+
         if (data.speak !== null && data.speak !== undefined && data.speak.length > 0) {
             console.log("Speaking: " + data.speak);
-            window.speechModule.speak(data.speak);
+            if (window.speechModule && typeof window.speechModule.speak === 'function') {
+                window.speechModule.speak(data.speak);
+            } else {
+                console.warn("window.speechModule.speak is not available.");
+            }
         }
         if (data.execute !== null && data.execute !== undefined && Array.isArray(data.execute) && data.execute.length > 0) {
             console.log("Executing: " + data.execute);
-            window.pageManipulatorModule.executePlan(data.execute);
+            if (window.pageManipulatorModule && typeof window.pageManipulatorModule.executePlan === 'function') {
+                window.pageManipulatorModule.executePlan(data.execute);
+            } else {
+                console.warn("window.pageManipulatorModule.executePlan is not available.");
+            }
         }
     }
     /**
@@ -62,35 +83,39 @@ class WebSocketAIReceiver {
         // console.log('WebSocketAIReceiver: Raw message received:', event.data);
 
         try {
-            const data = JSON.parse(event.data);
+            const data = JSON.parse(event.data); // Parse the incoming JSON string
             const messageType = data.type;
 
             // Check if the message type is 'ai_response'
-            if (messageType === 'ai_response') {
-                // The AI response content is expected in the 'message' key
-                const aiResponseContent = data.message;
-
-                // Check if the 'message' property exists and is not null/undefined
-                if (aiResponseContent !== undefined && aiResponseContent !== null) {
-                    console.log('WebSocketAIReceiver: Received AI response message.');
-
-                    this.handleAiMessage(aiResponseContent);
-                } else {
-                     console.warn('WebSocketAIReceiver: Received ai_response message but missing "message" content.', data);
-                     // Optional: Call error callback or handle this case
-                }
+            // The backend consumer now sends the structured AI object directly as the top-level message
+            // based on the updated consumer (await self.send_json(ai_response)).
+            // So, 'data' itself should be the structured object (e.g., {speak: "...", execute: [...]}).
+            if (messageType === 'ai_response') { // This check is for messages wrapped with a 'type' key
+                // If the backend sends {'type': 'ai_response', 'message': structured_object}
+                // then you'd use data.message here.
+                // But if it sends structured_object directly as the main payload,
+                // then data itself is the structured object.
+                // Based on previous consumer updates, the consumer sends the structured object directly.
+                // So, we expect 'data' to be the structured object.
+                // The 'type' check here is redundant if the consumer sends the raw structured object.
+                // Let's assume the consumer sends the structured object directly.
+                console.log('WebSocketAIReceiver: Received AI response message (structured).');
+                this.handleAiMessage(data); // Pass the entire parsed object to handleAiMessage
+            } else if (data.speak !== undefined || data.execute !== undefined) {
+                 // This handles cases where the structured AI response is sent without a 'type' wrapper
+                 // (e.g., if the consumer just does send_json(ai_response_object))
+                 console.log('WebSocketAIReceiver: Received AI response message (structured, no explicit type).');
+                 this.handleAiMessage(data);
             } else if (messageType === 'error' && data.message) {
                  // Optional: Handle error messages sent from the backend task/consumer
                  console.error('WebSocketAIReceiver: Received error message from backend:', data.message);
                  // Optional: Display this error to the user
+            } else {
+                console.warn('WebSocketAIReceiver: Received unexpected message type or format:', data);
             }
-            // Handle other message types if necessary
 
         } catch (error) {
             console.error('WebSocketAIReceiver: Failed to parse message data:', error, event.data);
-            if (this.onErrorCallback) {
-                 this.onErrorCallback(error); // Call optional user-provided error callback
-            }
         }
     }
 
@@ -127,85 +152,8 @@ class WebSocketAIReceiver {
     }
 }
 
-// --- How to use this module in your HTML/JS ---
-/*
-// 1. Determine the WebSocket URL that maps to your AiConsumer.
-// Based on your fixed group name "ai", your routing.py might have something like:
-// re_path(r'ws/ai/$', consumers.AiConsumer.as_asgi()),
-// So the URL would be:
-const websocketProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-const websocketHost = window.location.host; // e.g., 'localhost:8000' or 'yourdomain.com'
-const websocketUrl = `${websocketProtocol}${websocketHost}/ws/ai/`; // Adjust path if needed
-
-// 2. Define the callback function that handles the received AI response string
-function handleReceivedAIResponse(aiResponseString) {
-    console.log("Frontend: Received AI response:", aiResponseString);
-    // --- Update your UI here with the received AI response ---
-    const chatArea = document.getElementById('chat-display'); // Assuming you have a div with this ID
-    if (chatArea) {
-        const aiMessageElement = document.createElement('div');
-        // Be cautious with innerHTML if the response could contain malicious HTML/JS
-        // aiMessageElement.innerHTML = aiResponseString; // Use with caution! Sanitize HTML!
-        aiMessageElement.textContent = aiResponseString; // Safer for plain text
-        aiMessageElement.classList.add('ai-message'); // Add CSS class for styling
-        chatArea.appendChild(aiMessageElement);
-        chatArea.scrollTop = chatArea.scrollHeight; // Scroll to bottom
-    } else {
-        console.error("Frontend: Chat display area not found (element with ID 'chat-display').");
-    }
+// Expose the initializer globally.
+// This allows your background.js or other parts of the extension to call it.
+window.websocket = {
+    initializeAIWebSocket
 }
-
-// 3. (Optional) Define callbacks for other events
-function handleWebSocketError(error) {
-    console.error("Frontend: WebSocket encountered an error:", error);
-    // Display an error message to the user
-}
-
-function handleWebSocketClose(event) {
-    console.log("Frontend: WebSocket connection closed:", event);
-    // Update UI to show connection status (e.g., "Disconnected")
-    if (!event.wasClean) {
-        // Handle unexpected closure (reconnection logic is in the class)
-        console.log("Frontend: WebSocket connection closed unexpectedly.");
-    }
-}
-
-function handleWebSocketOpen(event) {
-     console.log("Frontend: WebSocket connection opened successfully.");
-     // Update UI to show connection status (e.g., "Connected")
-}
-
-
-// 4. Create an instance of the receiver when your page/component loads
-let aiWebSocketReceiver = null;
-
-// Call this function when your page is ready to start the WebSocket connection
-function initializeAIWebSocket() {
-    // Ensure only one instance is active at a time
-    if (aiWebSocketReceiver) {
-        aiWebSocketReceiver.close(); // Close existing connection if any
-    }
-    aiWebSocketReceiver = new WebSocketAIReceiver(
-        websocketUrl,
-        handleReceivedAIResponse,
-        handleWebSocketError,     // Optional error callback
-        handleWebSocketClose,     // Optional close callback
-        handleWebSocketOpen       // Optional open callback
-    );
-}
-
-// Example: Call initializeAIWebSocket() when your page or application starts
-// window.onload = initializeAIWebSocket; // Simple example for a full page load
-
-
-// 5. Remember to close the connection when it's no longer needed
-// (e.g., when the user navigates away from the chat page, logs out, or the component unmounts)
-// if (aiWebSocketReceiver) {
-//     aiWebSocketReceiver.close();
-// }
-
- */
-
-window.websocke = {
-
-};

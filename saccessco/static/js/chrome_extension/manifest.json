@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Saccesco-3",
-  "version": "1.0",
+  "name": "Saccesco-3.1",
+  "version": "3.1",
   "description": "A Chrome extension with a floating button to listen and speak back.",
   "permissions": [
     "storage",
@@ -18,7 +18,8 @@
         "backend_communicator.js",
         "page_change_observer.js",
         "page_manipulator.js",
-        "chat_module.js"
+        "chat_module.js",
+        "websocket.js"
       ],
       "css": ["styles.css"],
       "run_at": "document_end"

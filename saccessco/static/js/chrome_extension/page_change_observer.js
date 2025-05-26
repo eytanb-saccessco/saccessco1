@@ -1,7 +1,15 @@
-// contentChangeDetector.js
+// page_change_observer.js
+
+let previousHtmlHash = ""; // Stores the hash of the previously sent HTML content
+let urlCheckIntervalId = null; // To store the interval ID for cleanup
+let mutationObserverInstance = null; // To store the MutationObserver instance for cleanup
+
+// --- Helper Functions ---
 
 /**
  * Extracts relevant content from HTML, mirroring the Python HTMLHasher.
+ * @param {string} html - The full HTML string of the page.
+ * @returns {string} The extracted relevant text content.
  */
 function extractRelevantContent(html) {
   const parser = new DOMParser();
@@ -11,7 +19,7 @@ function extractRelevantContent(html) {
   const titleElement = doc.querySelector("title");
   const title = titleElement ? titleElement.textContent.trim() : "";
 
-  // Extract the main text content
+  // Extract the main text content from paragraphs within <main> or globally
   let paragraphs;
   const mainElement = doc.querySelector("main");
   if (mainElement) {
@@ -29,134 +37,149 @@ function extractRelevantContent(html) {
 }
 
 /**
- * Sends the current page's URL and HTML content to the backend.
+ * Calculates the SHA-256 hash of a given string content.
+ * @param {string} content - The string content to hash.
+ * @returns {Promise<string>} A promise that resolves with the SHA-256 hash as a hex string.
  */
-async function notifyBackend(mutationType = "initial load", previousHash = "") {
-  const newUrl = window.location.href;
-  const newHtml = document.documentElement.outerHTML;
-
-  // Extract relevant content
-  const relevantContent = extractRelevantContent(newHtml);
-
-  // Calculate SHA-256 hash of the relevant content
+async function calculateHash(content) {
   const textEncoder = new TextEncoder();
-  const data = textEncoder.encode(relevantContent);
-  try{
-    const hashBufferPromise =  crypto.subtle.digest('SHA-256', data);
-    const hashBuffer = await hashBufferPromise;
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const htmlHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    console.log(`Notifying backend of ${mutationType}: URL: ${newUrl}, HTML Hash: ${htmlHash}`);
-    window.backendCommunicatorModule.sendPageChange(newUrl, newHtml, htmlHash); // Send the hash
-    return htmlHash;
-  }
-  catch(e){
-    console.error("Error calculating or sending hash",e);
-    return "";
-  }
-
-
+  const data = textEncoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
- * Sets up listeners to detect URL and HTML changes.
+ * Sends the current page's HTML content to the backend.
+ * @param {string} htmlContent - The full HTML content to send.
+ * @param {string} mutationType - The type of event that triggered the notification (for logging).
+ */
+async function notifyBackend(htmlContent, mutationType) {
+  console.log(`Page change (${mutationType}) detected. Sending HTML to backend. Length: ${htmlContent.length}`);
+  try {
+    // window.backendCommunicatorModule.sendPageChange expects only html as per latest fixed version
+    await window.backendCommunicatorModule.sendPageChange(htmlContent);
+    console.log(`Successfully sent page change (${mutationType}) to backend.`);
+  } catch (e) {
+    console.error(`Error sending page change (${mutationType}) to backend:`, e);
+  }
+}
+
+/**
+ * Checks for HTML content changes, calculates hash, and notifies backend if changed.
+ * This function is reused by MutationObserver and URL change listeners.
+ * @param {string} triggerType - The type of event that triggered this check (e.g., "DOM mutation", "popstate").
+ */
+async function checkAndNotifyHtmlChange(triggerType) {
+  const newHtml = document.documentElement.outerHTML;
+  const newRelevantContent = extractRelevantContent(newHtml);
+
+  try {
+    const newHtmlHash = await calculateHash(newRelevantContent);
+
+    if (newHtmlHash !== previousHtmlHash) {
+      console.log(`HTML content hash changed due to ${triggerType}.`);
+      previousHtmlHash = newHtmlHash; // Update the stored hash
+      await notifyBackend(newHtml, triggerType);
+    } else {
+      console.log(`HTML content hash unchanged after ${triggerType}.`);
+    }
+  } catch (e) {
+    console.error(`Error calculating hash during ${triggerType} check:`, e);
+  }
+}
+
+// --- Event Handlers for URL Changes (defined as named functions for removal) ---
+let currentUrl = window.location.href; // Keep track of current URL for polling
+
+const popstateHandler = () => {
+  console.log("popstate event: URL changed to", window.location.href);
+  checkAndNotifyHtmlChange("popstate");
+};
+
+const hashchangeHandler = () => {
+  console.log("hashchange event: URL changed to", window.location.href);
+  checkAndNotifyHtmlChange("hashchange");
+};
+
+const urlPollingCheck = () => {
+  if (window.location.href !== currentUrl) {
+    currentUrl = window.location.href;
+    console.log("URL changed (polling) to", currentUrl);
+    checkAndNotifyHtmlChange("url polling");
+  }
+};
+
+
+// --- Main Setup Function ---
+
+/**
+ * Sets up listeners to detect URL and HTML changes and notifies the backend.
  */
 async function setupChangeObserver() {
-  let previousHtmlHash = ""; // Store the previous hash
-
-  // 1. Listen for URL changes using the History API and hash changes.
-  window.addEventListener("popstate", async () => {
-    console.log("popstate event: URL changed to", window.location.href);
-    previousHtmlHash = await notifyBackend("popstate", previousHtmlHash);
-  });
-  window.addEventListener("hashchange", async () => {
-    console.log("hashchange event: URL changed to", window.location.href);
-    previousHtmlHash = await notifyBackend("hashchange", previousHtmlHash);
-  });
-
-  // 2. Fallback: Poll for URL changes every second.
-  let currentUrl = window.location.href;
-  const urlCheckInterval = setInterval(async () => {
-    if (window.location.href !== currentUrl) {
-      currentUrl = window.location.href;
-      console.log("URL changed (polling) to", currentUrl);
-      previousHtmlHash = await notifyBackend("url polling", previousHtmlHash);
-    }
-  }, 1000);
-
-  // 3. Observe DOM mutations for HTML changes.
-  const observer = new MutationObserver(async (mutationsList) => { //make the callback async
-    for (const mutation of mutationsList) {
-      if (
-        mutation.type === "childList" ||
-        mutation.type === "subtree" ||
-        mutation.type === "attributes" ||
-        mutation.type === "characterData"
-      ) {
-        console.log("DOM mutation detected");
-
-        const newHtml = document.documentElement.outerHTML;
-        const relevantContent = extractRelevantContent(newHtml);
-        const textEncoder = new TextEncoder();
-        const data = textEncoder.encode(relevantContent);
-        try{
-          const hashBufferPromise =  crypto.subtle.digest('SHA-256', data);
-          const hashBuffer = await hashBufferPromise;
-          const hashArray = Array.from(new Uint8Array(hashBuffer));
-          const newHtmlHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-          if (newHtmlHash !== previousHtmlHash) {
-            // Only notify if the hash has changed
-            previousHtmlHash = await notifyBackend("DOM mutation", previousHtmlHash);
-
-          }
-        }
-        catch(e){
-          console.error("Error calculating hash",e);
-        }
-
-        break; // important: only send one update per mutation event.
-      }
-    }
-  });
-
-  // Start observing the entire body (including changes within its children)
-  observer.observe(document.body, {
-    childList: true,    // Monitor additions/removals of child nodes
-    subtree: true,    // Monitor changes in the entire subtree
-    attributes: true,  // Monitor changes to attributes.
-    characterData: true // Monitor changes to text content.
-  });
-
-  // 4. Send initial page state on load
+  // 1. Initial page state load and send
   const initialHtml = document.documentElement.outerHTML;
   const initialRelevantContent = extractRelevantContent(initialHtml);
-  const textEncoder = new TextEncoder();
-  const data = textEncoder.encode(initialRelevantContent);
-  try{
-    const hashBufferPromise =  crypto.subtle.digest('SHA-256', data);
-    const hashBuffer = await hashBufferPromise;
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    previousHtmlHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    notifyBackend("initial load", previousHtmlHash);
+  try {
+    previousHtmlHash = await calculateHash(initialRelevantContent);
+    await notifyBackend(initialHtml, "initial load");
+  } catch (e) {
+    console.error("Error calculating or sending initial HTML hash:", e);
   }
-  catch(e){
-     console.error("Error calculating initial hash",e);
-  }
+
+  // 2. Observe DOM mutations for HTML changes.
+  // The callback directly calls checkAndNotifyHtmlChange
+  mutationObserverInstance = new MutationObserver((mutationsList) => {
+    // We don't need to iterate mutationsList here, as we always check the whole document
+    // and only notify if the hash of the whole document's relevant content changes.
+    // This debounces multiple rapid mutations into one check.
+    checkAndNotifyHtmlChange("DOM mutation");
+  });
+
+  // Start observing the entire document body for all relevant changes
+  mutationObserverInstance.observe(document.body, {
+    childList: true,    // Monitor additions/removals of child nodes
+    subtree: true,      // Monitor changes in the entire subtree
+    attributes: true,   // Monitor changes to attributes.
+    characterData: true // Monitor changes to text content.
+  });
+  console.log("MutationObserver started.");
+
+
+  // 3. Listen for URL changes using History API and hash changes.
+  window.addEventListener("popstate", popstateHandler);
+  window.addEventListener("hashchange", hashchangeHandler);
+  console.log("URL change listeners (popstate, hashchange) added.");
+
+
+  // 4. Fallback: Poll for URL changes every second.
+  urlCheckIntervalId = setInterval(urlPollingCheck, 1000);
+  console.log("URL polling started.");
 
 
   // 5. Cleanup function (important for extension context)
   window.cleanupChangeObserver = () => {
-    clearInterval(urlCheckInterval);
-    observer.disconnect();
-    window.removeEventListener("popstate", () => {}); //remove listener
-    window.removeEventListener("hashchange", () => {});
+    if (urlCheckIntervalId) {
+      clearInterval(urlCheckIntervalId);
+      urlCheckIntervalId = null;
+      console.log("URL polling stopped.");
+    }
+    if (mutationObserverInstance) {
+      mutationObserverInstance.disconnect();
+      mutationObserverInstance = null;
+      console.log("MutationObserver disconnected.");
+    }
+    window.removeEventListener("popstate", popstateHandler);
+    window.removeEventListener("hashchange", hashchangeHandler);
+    console.log("History API listeners removed.");
     console.log("Change observer and listeners cleaned up.");
   };
 }
 
-// Initialize URL and HTML change detection.
+// Expose the setup function globally for the extension to call
 window.changeObserver = {
   setupChangeObserver,
 };
 
-
+// Example of how it might be called from background.js or another module:
+// window.changeObserver.setupChangeObserver().then();

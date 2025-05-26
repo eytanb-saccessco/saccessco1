@@ -13,11 +13,12 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+load_dotenv()
 from .logging_conf import *
 
-load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+APP_DIR = Path(__file__).resolve().parent
 
 
 # Quick-start development settings - unsuitable for production
@@ -30,17 +31,18 @@ SECRET_KEY = 'django-insecure-av2+=4r^2dg!gs@*u)w#uwvyvajz2$)#&sf8j2!+^a8py&osey
 DEBUG = True
 
 ALLOWED_HOSTS = []
-
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Application definition
 
 INSTALLED_APPS = [
-    'uvicorn',
-    'channels',
-    'django_q',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
+    'uvicorn',
+    'daphne',
+    'channels',
+    'corsheaders',
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
@@ -49,6 +51,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -62,8 +65,7 @@ ROOT_URLCONF = 'saccessco.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates']
-        ,
+        'DIRS': [APP_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -77,6 +79,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'saccessco.wsgi.application'
+ASGI_APPLICATION = 'saccessco.asgi.application'
 
 
 # Database
@@ -133,19 +136,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 OPEN_API_KEY = os.getenv("OPEN_API_KEY")
 OPEN_API_MODEL = "o3-mini"
-
-Q_CLUSTER = {
-    'name': 'my_django_q_cluster',
-    'workers': 4,
-    'timeout': 20,
-    'retry': 25,
-    'compress': True,
-    'save_limit': 250,
-    'queue_limit': 500,
-    'cpu_affinity': 1,
-    'label': 'Django Q',
-    'orm': 'default', # Use the default database connection configured in settings.py
-}
 
 CHANNEL_LAYERS = {
     "default": {

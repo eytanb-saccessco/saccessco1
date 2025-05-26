@@ -5,6 +5,7 @@ micButton.classList.add("mic-inactive"); // Initial style
 micButton.textContent = "🎤";
 document.body.appendChild(micButton);
 
+window.conversation_id = crypto.randomUUID
 let isListening = false;
 let initialSetupDone = false;
 let chatVisible = false; // Track chat visibility
@@ -14,12 +15,9 @@ micButton.addEventListener("click", () => {
 
   if (!initialSetupDone) {
     try {
-      window.backendCommunicatorModule.getConversationId().then((conversationId) => {
-        console.log("Old conversation id is: " + conversationId);
-      });
-      window.backendCommunicatorModule.removeConversationId();
       console.log("Conversation id removed");
-      window.changeObserver.setupChangeObserver();
+      window.changeObserver.setupChangeObserver().then();
+      window.websocket.initializeAIWebSocket();
       console.log("Initial setup done and backend notified with location.");
       window.chatModule.addMessage("Saccessco", "Ready to listen."); // Use chat module
       window.speechModule.speak("Saccessco is ready to listen.");
