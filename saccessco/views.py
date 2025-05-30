@@ -37,6 +37,7 @@ class PageChangeAPIView(APIView):
 class UserPromptAPIView(APIView):
 
     def post(self, request, *args, **kwargs):
+        logger.info(f"UserPromptAPIView called with {request.data}")
         serializer = UserPromptSerializer(data=request.data)
         if serializer.is_valid():
             conversation_id = serializer.data["conversation_id"]

@@ -1,4 +1,12 @@
-let aiWebSocketReceiver = null;
+// saccessco/static/js/chrome_extension/websocket.js
+
+// Ensure this is at the top of the file or globally accessible
+// This array will store raw WebSocket messages for testing.
+if (!window.__receivedWebSocketMessages) {
+    window.__receivedWebSocketMessages = [];
+}
+
+let aiWebSocketReceiver = null; // Declare globally or at the top of the module
 
 function initializeAIWebSocket() {
     // Ensure only one instance is active at a time
@@ -6,6 +14,7 @@ function initializeAIWebSocket() {
         aiWebSocketReceiver.close(); // Close existing connection if any
     }
     aiWebSocketReceiver = new WebSocketAIReceiver();
+    window.aiWebSocketReceiver = aiWebSocketReceiver;
 }
 
 class WebSocketAIReceiver {
@@ -13,29 +22,25 @@ class WebSocketAIReceiver {
         // Ensure window.configuration and SACCESSCO_WEBSOCKET_URL exist
         if (!window.configuration || !window.configuration.SACCESSCO_WEBSOCKET_URL) {
             console.error("WebSocketAIReceiver: window.configuration.SACCESSCO_WEBSOCKET_URL is not defined.");
-            // Handle this error appropriately, e.g., throw, or prevent connection
-            // For now, we'll return to prevent further errors.
-            return;
+            return; // Prevent further errors
         }
 
-        this.websocketUrl = window.configuration.SACCESSCO_WEBSOCKET_URL + "/" + window.conversation_id;
+        this.websocketUrl = window.configuration.SACCESSCO_WEBSOCKET_URL + "/" + window.conversation_id + "/";
         console.log(`WebSocketAIReceiver: Constructed WebSocket URL: ${this.websocketUrl}`);
-
 
         this.socket = null; // Will hold the WebSocket instance
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 10; // Maximum number of reconnection attempts
-        this.reconnectDelay = 1000; // Initial delay in ms before attempting reconnect
-        this.isClosingIntentionally = false; // Flag to prevent unwanted reconnects
+        this.maxReconnectAttempts = 10;
+        this.reconnectDelay = 1000;
+        this.isClosingIntentionally = false;
 
         // Automatically try to connect when the instance is created
         this.connect();
     }
+
     handleAiMessage(message) {
-        // This function expects a parsed JSON object, not a string that needs parsing.
-        // It's called from onMessage after JSON.parse(event.data).
-        const data = message; // 'message' is already the parsed object from onMessage
-        console.log("AI response (parsed object):", data);
+        const data = message;
+        console.log("DEBUG: handleAiMessage called with parsed data:", data);
 
         if (data.speak !== null && data.speak !== undefined && data.speak.length > 0) {
             console.log("Speaking: " + data.speak);
@@ -54,106 +59,93 @@ class WebSocketAIReceiver {
             }
         }
     }
+
     /**
      * Establishes the WebSocket connection.
      */
     connect() {
+        console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Connecting');
         if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
             console.log("WebSocketAIReceiver: Socket already connected or connecting.");
             return;
         }
 
-        this.isClosingIntentionally = false; // Reset intentional close flag
-        console.log(`WebSocketAIReceiver: Attempting to connect to ${this.websocketUrl}`);
+        this.isClosingIntentionally = false;
+        console.log(`--- CRITICAL DEBUG: WebSocketAIReceiver: Attempting to connect to ${this.websocketUrl}`);
         this.socket = new WebSocket(this.websocketUrl);
+        console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Socket created');
 
-        // --- Assign Event Handlers ---
-        this.socket.onopen = (event) => this.onOpen(event);
-        this.socket.onmessage = (event) => this.onMessage(event);
-        this.socket.onclose = (event) => this.onClose(event);
-        this.socket.onerror = (event) => this.onError(event);
-    }
+        // Assign Event Handlers
+        this.socket.onopen = (event) => {
+            console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Connection opened. ReadyState:', this.socket.readyState, event);
+            this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
 
-    onOpen(event) {
-        console.log('WebSocketAIReceiver: Connection opened.', event);
-        this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-    }
+            // --- NEW: Send a message immediately upon connection ---
+            const clientHelloMessage = {
+                type: 'client_hello',
+                message: 'Hello from browser client!'
+            };
+            this.socket.send(JSON.stringify(clientHelloMessage));
+            console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Sent client_hello message.');
+            // --- END NEW ---
+        };
 
-    onMessage(event) {
-        // console.log('WebSocketAIReceiver: Raw message received:', event.data);
+        console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Assigning onmessage handler');
+        this.socket.onmessage = (event) => {
+            console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: RAW message received (onMessage handler FIRED!):', event.data);
+            window.__receivedWebSocketMessages.push(event.data); // Store the raw message for Python to inspect
 
-        try {
-            const data = JSON.parse(event.data); // Parse the incoming JSON string
-            const messageType = data.type;
+            try {
+                const data = JSON.parse(event.data);
+                const messageType = data.type;
 
-            // Check if the message type is 'ai_response'
-            // The backend consumer now sends the structured AI object directly as the top-level message
-            // based on the updated consumer (await self.send_json(ai_response)).
-            // So, 'data' itself should be the structured object (e.g., {speak: "...", execute: [...]}).
-            if (messageType === 'ai_response') { // This check is for messages wrapped with a 'type' key
-                // If the backend sends {'type': 'ai_response', 'message': structured_object}
-                // then you'd use data.message here.
-                // But if it sends structured_object directly as the main payload,
-                // then data itself is the structured object.
-                // Based on previous consumer updates, the consumer sends the structured object directly.
-                // So, we expect 'data' to be the structured object.
-                // The 'type' check here is redundant if the consumer sends the raw structured object.
-                // Let's assume the consumer sends the structured object directly.
-                console.log('WebSocketAIReceiver: Received AI response message (structured).');
-                this.handleAiMessage(data); // Pass the entire parsed object to handleAiMessage
-            } else if (data.speak !== undefined || data.execute !== undefined) {
-                 // This handles cases where the structured AI response is sent without a 'type' wrapper
-                 // (e.g., if the consumer just does send_json(ai_response_object))
-                 console.log('WebSocketAIReceiver: Received AI response message (structured, no explicit type).');
-                 this.handleAiMessage(data);
-            } else if (messageType === 'error' && data.message) {
-                 // Optional: Handle error messages sent from the backend task/consumer
-                 console.error('WebSocketAIReceiver: Received error message from backend:', data.message);
-                 // Optional: Display this error to the user
-            } else {
-                console.warn('WebSocketAIReceiver: Received unexpected message type or format:', data);
+                if (data.speak !== undefined || data.execute !== undefined) {
+                     console.log('WebSocketAIReceiver: Received AI response message (structured, no explicit type).');
+                     this.handleAiMessage(data);
+                } else if (messageType === 'ai_response' && data.ai_response) {
+                    console.log('WebSocketAIReceiver: Received AI response message (structured, with explicit type).');
+                    this.handleAiMessage(data.ai_response);
+                } else if (messageType === 'error' && data.message) {
+                     console.error('WebSocketAIReceiver: Received error message from backend:', data.message);
+                } else {
+                    console.warn('WebSocketAIReceiver: Received unexpected message type or format:', data);
+                }
+
+            } catch (error) {
+                console.error('--- CRITICAL DEBUG: WebSocketAIReceiver: Error in onMessage handler parsing/processing:', error, event.data);
             }
+        };
+        console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: onmessage handler assigned.');
 
-        } catch (error) {
-            console.error('WebSocketAIReceiver: Failed to parse message data:', error, event.data);
-        }
-    }
+        this.socket.onclose = (event) => {
+            console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Connection closed. Code:', event.code, 'Reason:', event.reason, 'Was Clean:', event.wasClean);
+            if (!this.isClosingIntentionally && event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+                console.log(`--- CRITICAL DEBUG: WebSocketAIReceiver Attempting to reconnect in ${this.reconnectDelay}ms (Attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
+                setTimeout(() => {
+                    this.reconnectAttempts++;
+                    this.connect();
+                }, this.reconnectDelay);
+            } else if (!this.isClosingIntentionally && event.code !== 1000) {
+                console.error(`--- CRITICAL DEBUG: WebSocketAIReceiver Max reconnection attempts (${this.maxReconnectAttempts}) reached. Connection failed.`);
+            }
+        };
+        this.socket.onerror = (event) => {
+            console.error('--- CRITICAL DEBUG: WebSocketAIReceiver: Error occurred. ReadyState:', this.socket.readyState, event);
+        };
+        console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Socket initialized');
 
-    onClose(event) {
-        console.log('WebSocketAIReceiver: Connection closed.', event);
-
-        // Only attempt to reconnect if the close was NOT intentional and max attempts not reached
-        if (!this.isClosingIntentionally && event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-            console.log(`WebSocketAIReceiver: Attempting to reconnect in ${this.reconnectDelay}ms (Attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
-            setTimeout(() => {
-                this.reconnectAttempts++;
-                this.connect(); // Try to reconnect
-            }, this.reconnectDelay);
-            // Optional: Increase reconnectDelay exponentially or with jitter
-            // this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000); // Max delay 30 seconds
-        } else if (!this.isClosingIntentionally && event.code !== 1000) {
-            console.error(`WebSocketAIReceiver: Max reconnection attempts (${this.maxReconnectAttempts}) reached. Connection failed.`);
-            // Notify the user or application state of the permanent failure
-        }
-        // If code is 1000 or isClosingIntentionally is true, it was a clean or intentional close, no need to reconnect automatically
-    }
-
-    onError(event) {
-        console.error('WebSocketAIReceiver: Error occurred:', event);
     }
 
     close() {
-        this.isClosingIntentionally = true; // Set flag before closing
+        this.isClosingIntentionally = true;
         if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
             console.log("WebSocketAIReceiver: Closing connection intentionally.");
-            // Use code 1000 for a clean closure
             this.socket.close(1000, 'Client closing connection');
         }
     }
 }
 
 // Expose the initializer globally.
-// This allows your background.js or other parts of the extension to call it.
 window.websocket = {
     initializeAIWebSocket
 }

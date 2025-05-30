@@ -1,57 +1,66 @@
-import json
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+# saccessco/consumers.py
+import asyncio
+import json # Ensure json is imported
+from channels.generic.websocket import AsyncWebsocketConsumer
 import logging
 
-logger = logging.getLogger("saccessco")
+logger = logging.getLogger('saccessco')
 
-class AiConsumer(AsyncJsonWebsocketConsumer):
-    # Class-level constant for the group name prefix
-    GROUP_NAME_PREFIX = "WEB_SOCKET_GROUP_NAME_"
-
-    # REMOVED custom __init__ method.
-    # The base AsyncJsonWebsocketConsumer will handle setting self.scope.
-
+class AiConsumer(AsyncWebsocketConsumer):
+    GROUP_NAME_PREFIX = 'WEB_SOCKET_GROUP_NAME_'
     async def connect(self):
-        # Now, self.scope is guaranteed to be available when connect is called.
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
-        self.conversation_group_name = f"{self.GROUP_NAME_PREFIX}{self.conversation_id}"
+        self.group_name = f"{self.GROUP_NAME_PREFIX}{self.conversation_id}"
 
-        logger.info(f"--- AiConsumer: Received path in connect: {self.scope['path']} ---")
-        logger.info(f"--- AiConsumer: Connecting to group '{self.conversation_group_name}' for conversation ID: {self.conversation_id} ---")
+        print(f"--- AiConsumer: Received path in connect: {self.scope['path']} ---")
+        print(f"--- AiConsumer: Connecting to group '{self.group_name}' for conversation ID: {self.conversation_id} ---")
 
-        # Add the consumer's channel to the dynamically named group
+        # Join group
         await self.channel_layer.group_add(
-            self.conversation_group_name,
+            self.group_name,
             self.channel_name
         )
 
-        # Accept the WebSocket connection
         await self.accept()
-        logger.info(f"WebSocket connected for conversation ID: {self.conversation_id} to group: {self.conversation_group_name}")
+        # ADD THIS LINE: Small delay after accepting the connection
+        await asyncio.sleep(0.05) # Sleep for 50 milliseconds
+
+        print(f"WebSocket connected for conversation ID: {self.conversation_id} to group: {self.group_name}")
+
+    # This method handles messages received directly from the WebSocket client
+    async def receive(self, text_data):
+        text_data_json = json.loads(text_data)
+        message_type = text_data_json.get('type')
+
+        logger.info(f"--- AiConsumer: Received RAW message from client: {text_data_json} ---")
+
+        if message_type == 'client_hello':
+            # Handle initial client hello (from Selenium test)
+            client_message = text_data_json.get('message')
+            logger.info(f"--- AiConsumer: Client 'hello' message received: {client_message} ---")
+            # You might want to send a confirmation or initial AI message here
+            # For example:
+            # await self.send(text_data=json.dumps({"type": "server_ack", "message": "Received your hello!"}))
+            logger.info("INFO: WebSocketAIReceiver connection established.")
+
+        elif message_type == 'client_hello_manual': # NEW: Handle the manual client's hello
+            client_message = text_data_json.get('message')
+            logger.info(f"--- AiConsumer: Manual client 'hello' message received: {client_message} ---")
+            # This message doesn't need a direct response for the test, it's just for confirmation.
+
+        else:
+            logger.info(f"--- AiConsumer: Received unexpected message from client: {text_data_json} ---")
+            # Fallback for unhandled message types directly from WebSocket
 
     async def disconnect(self, close_code):
-        logger.info(f"WebSocket disconnected for conversation ID: {self.conversation_id} from group: {self.conversation_group_name} with code {close_code}")
-        # Leave the dynamically named conversation group
+        print(f"WebSocket disconnected for conversation ID: {self.conversation_id} from group: {self.group_name} with code {close_code}")
+        # Leave group
         await self.channel_layer.group_discard(
-            self.conversation_group_name,
+            self.group_name,
             self.channel_name
         )
 
     async def ai_response(self, event):
-        """
-        Handler for messages sent to the group with type 'ai_response'.
-        The 'event' dictionary contains the payload sent by group_send.
-        Expected 'event' structure from task: {'type': 'ai_response', 'ai_response': { ... structured_object ... }}
-        """
-        # self.conversation_id is available here because it was set in connect().
-        ai_response_object = event.get('ai_response')
-
-        if ai_response_object is not None:
-            logger.info(f"Consumer received AI response from channel layer for conversation ID {self.conversation_id}: {ai_response_object}")
-
-            # Send the AI response object back to the client over the WebSocket.
-            # send_json automatically handles json.dumps().
-            await self.send_json(ai_response_object)
-        else:
-            logger.error(f"Consumer received 'ai_response' message from channel layer without 'ai_response' payload. Received event: {event}")
-            await self.send_json({'type': 'error', 'message': 'Invalid AI response format received from server.'})
+        ai_response_data = event['ai_response']
+        print(f"--- AiConsumer: Sending AI response to client: {ai_response_data} ---")
+        await self.send(text_data=json.dumps(ai_response_data))

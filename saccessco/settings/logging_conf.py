@@ -12,8 +12,6 @@ import logging # Import logging to use it for debugging within this file
 # is imported directly (e.g., BASE_DIR = Path(__file__).resolve().parent.parent)
 # For simplicity, let's assume it's in the project root for now.
 # If this file is in your app directory, you might need to adjust BASE_DIR.
-# For this example, let's make it relative to where settings.py would be.
-# A safer bet for dev is to put it in the project root.
 # Let's assume your Django project root is the current working directory when Daphne runs.
 
 # Use a log directory relative to your project's root for easier development
@@ -92,6 +90,13 @@ LOGGING = {
             'level': 'DEBUG', # Set to DEBUG to see detailed Channels internal logs (like ASGI Debug)
             'propagate': False,
         },
+        # --- NEW: Daphne Logger Configuration ---
+        'daphne': {
+            'handlers': [f'{APP_NAME}_file', 'console'], # Send Daphne logs to both file and console
+            'level': 'DEBUG', # Set to DEBUG for maximum verbosity from Daphne
+            'propagate': False, # Prevent logs from being passed to root logger
+        },
+        # --- END NEW ---
         'django.db.backends': { # NEW: Logger for Django database queries
             'handlers': ['console'], # Only send to console for now, or to a separate DB log file
             'level': 'INFO', # Set to INFO or higher to suppress DEBUG SQL queries

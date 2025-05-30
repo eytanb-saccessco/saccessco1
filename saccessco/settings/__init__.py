@@ -46,7 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'saccessco'
+    'saccessco',
 ]
 
 MIDDLEWARE = [
@@ -81,20 +81,35 @@ TEMPLATES = [
 WSGI_APPLICATION = 'saccessco.wsgi.application'
 ASGI_APPLICATION = 'saccessco.asgi.application'
 
+# Channels Channel Layer Configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            # This address should be accessible from where your Django app is running.
+            # '127.0.0.1' or 'localhost' is usually fine for dev.
+            "hosts": [("127.0.0.1", 6379)],
+            # If Redis requires a password (not default for dev usually):
+            # "password": "your_redis_password",
+            # If using a specific Redis DB (default is 0):
+            # "db": 1,
+        },
+    },
+}
 
-# Database
-# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+    },
+    'test': {  # <-- ADD THIS 'test' alias
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'test_db.sqlite3',  # This will be a temporary file-based database for your tests
     }
+
 }
 
-
-# Password validation
-# https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -127,7 +142,23 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/4.2/howto/static-files/
+
 STATIC_URL = 'static/'
+
+# Define where Django should look for additional static files
+STATICFILES_DIRS = [
+    str(BASE_DIR / 'static'),
+]
+print(f"DEBUG_STATIC_DIRS_RUNTIME: {STATICFILES_DIRS}")
+# STATIC_ROOT is typically only set for deployment
+# STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -136,10 +167,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 OPEN_API_KEY = os.getenv("OPEN_API_KEY")
 OPEN_API_MODEL = "o3-mini"
-
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
-}
 

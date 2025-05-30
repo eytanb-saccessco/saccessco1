@@ -17,6 +17,7 @@ psycopg2
 Pillow
 imagehash
 channels~=4.2.2
+channels_redis
 uvicorn
 django-q
 asynctest~=0.13.0

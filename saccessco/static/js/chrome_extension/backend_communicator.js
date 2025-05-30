@@ -1,4 +1,5 @@
-// backend_communicator.js
+// saccessco/static/js/chrome_extension/backend_communicator.js
+
 /**
  * Sends data to the backend and handles the initial response.
  * Expects the backend response to be JSON.
@@ -10,17 +11,17 @@
  */
 async function send(url, data) {
   if (!data) {
-    console.log("No data provided. Aborting send.");
+    console.error("ERROR: No data provided to send function. Aborting send.");
     return undefined; // Return undefined or null consistently on failure
   }
 
   // Robust check for window.configuration, DEBUG, and window.speechModule.speak
-  console.log("Sending data:", data, "to URL:", url);
+  console.log("INFO: Sending data:", data, "to URL:", url);
   if(window.configuration && window.configuration.DEBUG && window.speechModule && typeof window.speechModule.speak === 'function') {
       try {
           window.speechModule.speak("Sending: " + JSON.stringify(data) + " to: " + url);
       } catch (e) {
-          console.error("Error calling speechModule.speak:", e);
+          console.error("ERROR: Error calling speechModule.speak:", e);
       }
   }
 
@@ -33,33 +34,34 @@ async function send(url, data) {
 
     // Check if the HTTP response itself was successful (e.g., status 200-299)
     if (!response.ok) {
-        console.error(`HTTP error! status: ${response.status}`);
+        console.error(`ERROR: HTTP error! status: ${response.status} for URL: ${url}`);
         // Attempt to parse JSON error body if available
         try {
             const errorBody = await response.json(); // Await the JSON parsing
-            console.error("Backend returned error body:", errorBody);
-            // You might want to return the error body or throw an error
+            console.error("ERROR: Backend returned error body:", errorBody);
             return errorBody; // Return the error details from the backend
         } catch (jsonError) {
-            console.error("Could not parse error response as JSON:", jsonError);
-            // Return a generic error object if JSON parsing fails
+            console.error("ERROR: Could not parse error response as JSON:", jsonError, "Response text:", await response.text());
             return { error: `HTTP Error: ${response.status}`, details: response.statusText };
         }
     }
 
     // Await the JSON parsing of the successful response body
     let result = await response.json(); // <--- AWAIT the promise here
+    console.log("INFO: Received successful response:", result);
 
     // Assuming your backend JSON response includes a 'status' key
     // if (result && result.status !== "success") {
-    //   console.warn("Backend response status is not 'success':", result);
+    //   console.warn("WARNING: Backend response status is not 'success':", result);
     //   // You might want to handle non-success statuses differently
     // }
 
     return result; // Return the parsed JSON data
 
   } catch (error) {
-    console.error("Error sending data or receiving response:", error);
+    // This catch block handles network errors (e.g., server unreachable)
+    // or errors thrown during the fetch process before a response is received.
+    console.error("CRITICAL ERROR: Error sending data or receiving response (network/fetch error):", error);
     // Return undefined or a specific error object on fetch/network errors
     return undefined; // Or { error: "Network or Fetch error", details: error.message };
   }
@@ -72,11 +74,13 @@ async function send(url, data) {
  * @returns {Promise<Object|undefined>} Promise resolving with backend response data.
  */
 async function sendUserPrompt(text) {
-    console.log("Sending user prompt:", text);
+    console.log("INFO: Sending user prompt:", text);
     // Ensure the payload structure matches what your Django UserPromptSerializer expects
     const payload = {
+        'conversation_id': window.conversation_id, // ADDED: Ensure conversation_id is included
         'prompt': text,
     };
+    console.log("DEBUG: sendUserPrompt payload:", payload);
     return await send(window.configuration.SACCESSCO_USER_PROMPT_URL, payload);
 }
 
@@ -85,15 +89,14 @@ async function sendUserPrompt(text) {
  * @param {string} html - The HTML content of the page change.
  * @returns {Promise<Object|undefined>} Promise resolving with backend response data.
  */
-async function sendPageChange(html) { // Removed url parameter as requested
-    console.log("Sending page change HTML length: " + html.length);
+async function sendPageChange(html) {
+    console.log("INFO: Sending page change HTML length: " + html.length);
     // Ensure the payload structure matches what your Django PageChangeSerializer expects
     const payload = {
+        'conversation_id' : window.conversation_id, // ADDED: Ensure conversation_id is included
         'html' : html
     };
-    // Be cautious sending large HTML content frequently, consider alternatives if performance is an issue.
-    console.log("Page change HTML content length:", html ? html.length : 0);
-
+    console.log("DEBUG: sendPageChange payload:", payload);
     return await send(window.configuration.SACCESSCO_PAGE_CHANGE_URL, payload);
 }
 
