@@ -7,11 +7,12 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from django.db import connections, DEFAULT_DB_ALIAS # Needed for internal checks by ChannelsLiveServerTestCase
-
+from django.urls import reverse
 from saccessco.tests.extension.custom_channels_live_server_test_case import CustomChannelsLiveServerTestCase
 
 
 class AbstractExtensionPageTest(CustomChannelsLiveServerTestCase):
+    URL_NAME = 'test_page'
     """
     Base class for Selenium-driven extension tests requiring a live server
     and WebSocket capabilities provided by ChannelsLiveServerTestCase.
@@ -52,7 +53,7 @@ class AbstractExtensionPageTest(CustomChannelsLiveServerTestCase):
         self.driver.implicitly_wait(5) # Set a sensible implicit wait
 
         # Navigate to the test page using the live server URL
-        self.driver.get(f"{self.live_server_url}/test-page/")
+        self._load_url()
 
         # Inject your application's JavaScript files and mocks
         self._inject_initial_browser_mocks()
@@ -94,6 +95,10 @@ class AbstractExtensionPageTest(CustomChannelsLiveServerTestCase):
         super().tearDown() # This is crucial: calls ChannelsLiveServerTestCase's tearDown
 
     # --- Your existing helper methods (copy them from your old abstract_page_test.py) ---
+
+    def _load_url(self):
+        self.driver.get(f"{self.live_server_url}{reverse(self.URL_NAME)}")
+
     def _inject_initial_browser_mocks(self):
         """Injects mocks for browser APIs like SpeechRecognition/SpeechSynthesis."""
         self.driver.execute_script("""
@@ -141,7 +146,10 @@ class AbstractExtensionPageTest(CustomChannelsLiveServerTestCase):
         """)
         print("INFO: Injected initial browser API mocks.")
 
-    def _inject_app_js_files(self):
+    def _inject_app_js_files(self, pre_scripts=None):
+        if pre_scripts:
+            for script in pre_scripts:
+                self.driver.execute_script(script)
         """Injects application-specific JavaScript files."""
         print(f"--DEBUG--: _inject_app_js_files called")
         for js_file_path in self.JS_FILES:
@@ -209,3 +217,31 @@ class AbstractExtensionPageTest(CustomChannelsLiveServerTestCase):
             console.log("INFO: Configured global variables and stubbed dependent modules.");
         """)
         print("INFO: Configured global variables and stubbed dependent modules.")
+
+    def _get_browser_console_logs(self):
+        """
+        Retrieves and prints browser console logs since the last retrieval.
+        Filters for specific debug messages or prints all.
+        """
+        try:
+            # 'browser' is the log type for console messages
+            logs = self.driver.get_log('browser')
+
+            if logs:
+                print("\n--- BROWSER LOGS (console.log(...) ---")
+                print("----------------------------------------")
+                for entry in logs:
+                    # Each entry is a dictionary like {'level': 'INFO', 'message': '...', 'timestamp': ...}
+                    # You can filter for your specific messages, e.g., messages containing "--DEBUG--"
+                    # if "--DEBUG--" in entry['message'] or entry['level'] == 'SEVERE':
+                    #     print(f"[{entry['level']}] {entry['message']}")
+                    # # Optionally, uncomment the line below to see all INFO, WARNING, etc. messages
+                    # else:
+                    print(f"[{entry['level']}] {entry['message']}")
+                print("=====================================================")
+            # Return logs if you need to perform assertions on them
+            return logs
+        except Exception as e:
+            print(f"WARNING: Could not retrieve browser console logs: {e}")
+            return []
+

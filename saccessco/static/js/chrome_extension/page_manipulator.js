@@ -33,20 +33,21 @@ function handleClick(el) {
 }
 
 function handleSubmit(el) {
-  if (el.tagName.toLowerCase() === "form") {
-    const event = new Event("submit", { bubbles: true, cancelable: true });
-    el.dispatchEvent(event);
-  } else {
-    const form = el.closest("form");
-    if (form) {
-      const event = new Event("submit", { bubbles: true, cancelable: true });
-      form.dispatchEvent(event);
+    let formElement;
+    if (el.tagName.toLowerCase() === "form") {
+        formElement = el;
     } else {
-      throw new Error("No form found to submit.");
+        // If the element is not a form, try to find its closest form.
+        formElement = el.closest("form");
     }
-  }
-}
 
+    if (formElement) {
+        console.log(`Attempting native form submission for form:`, formElement);
+        formElement.submit(); // <-- THIS IS THE KEY CHANGE
+    } else {
+        throw new Error("No form found to submit.");
+    }
+}
 function handleSelectOption(el, data) {
   const optionsArray = Array.from(el.options);
   // If data is numeric, treat it as an index.
@@ -106,11 +107,13 @@ const actionHandlers = {
  * @returns {Promise<{status: string, error?: string}>} - Returns an object with status and optional error.
  */
 async function processCommand(command) {
-  console.log("Processing command: " + JSON.stringify(command));
+  // console.log("--DEBUG--: Current HTML:\n" + document.documentElement.outerHTML + "\n");
+  console.log("--DEBUG--: Processing command: " + JSON.stringify(command));
   const { action, element: selector, data } = command;
   try {
     const el = document.querySelector(selector);
     if (!el) {
+      console.error("Element not found: " + selector)
       return { status: "error", error: "Element not found" };
     }
     let finalData = data;
@@ -132,7 +135,7 @@ async function processCommand(command) {
           }
           window.chatModule.addMessage("Saccessco", "Please spell your input letter by letter in the chat, with spaces between each letter.");
           finalData = await window.chatModule.askConfirmation("Spell your input now:");
-          finalData = spelledInput.replace(/\s+/g, "");
+          finalData = finalData.replace(/\s+/g, "");
         } else if (typeof data === "string" && data === from_user) {
           window.chatModule.addMessage("Saccessco", "Please provide the input value in the chat.");
           finalData = await window.chatModule.askConfirmation("Enter the value:");
@@ -180,6 +183,7 @@ async function processCommand(command) {
  * @returns {Promise<{status: string, last_step: number, error_message: null, step_statuses: *[]}>}
  */
 async function executePlan(plan) {
+  console.log("--DEBUG--: start execution of plan: " + JSON.stringify(plan));
   let planStatus = {
     status: "running",
     last_step: -1,

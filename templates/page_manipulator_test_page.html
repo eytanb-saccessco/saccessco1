@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Page Manipulator Test Page</title>
+</head>
+<body>
+    <h1>Page Manipulator Test</h1>
+
+    <input type="text" id="textInput" value="initial value">
+    <input type="password" id="passwordInput" name="password_field">
+    <input type="text" id="usernameInput" name="username_field">
+    <input type="number" id="numberInput" value="123">
+    <input type="date" id="dateInput">
+
+    <button id="clickButton">Click Me</button>
+    <button id="submitButton" type="submit" form="testForm">Submit Button</button>
+
+    <form id="testForm" action="/form-submit-success/" method="post">
+        {% csrf_token %} <input type="text" id="formInput" name="form_data" value="default form data">
+        <button type="submit" id="internalSubmitButton">Internal Submit</button>
+    </form>
+
+    <select id="selectDropdown">
+        <option value="">--Please choose an option--</option>
+        <option value="opt1">Option One</option>
+        <option value="opt2">Option Two</option>
+        <option value="opt3">Option Three</option>
+    </select>
+
+    <input type="checkbox" id="checkboxInput" checked>
+    <input type="radio" name="radioGroup" id="radio1" value="val1">
+    <input type="radio" name="radioGroup" id="radio2" value="val2" checked>
+
+    <div id="targetDiv" tabindex="-1">This is a div to focus</div>
+    <a href="#" id="linkElement">A Link</a>
+
+    <div id="saccessco-chat-container" style="display:none;"></div>
+</body>
+</html>

@@ -17,11 +17,15 @@ Including another URLconf
 # from django.contrib import admin
 from django.urls import path
 
-from saccessco.views import PageChangeAPIView, UserPromptAPIView, TestHtmlView
+from saccessco.views import PageChangeAPIView, UserPromptAPIView, TestHtmlView, PageManipulatorTestPageView, \
+    FormSubmitSuccessView
 
 urlpatterns = [
     #    path('admin/', admin.site.urls),
     path('saccessco/user_prompt/', UserPromptAPIView.as_view(), name='user_prompt'),
     path('saccessco/page_change/', PageChangeAPIView.as_view(), name='page_change'),
-    path('test-page/', TestHtmlView.as_view(), name='test_page')
+    path('test-page/', TestHtmlView.as_view(), name='test_page'),
+    path('test-page-manipulator/', PageManipulatorTestPageView.as_view(), name='test_page_manipulator'),
+    path('form-submit-success/', FormSubmitSuccessView.as_view(), name='form_submit_success'),
+
 ]
