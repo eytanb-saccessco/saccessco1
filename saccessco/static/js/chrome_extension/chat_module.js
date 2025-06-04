@@ -4,39 +4,62 @@
   const chatContainerId = 'saccessco-chat-container';
   const chatInputId = 'saccessco-chat-input';
   const chatButtonId = 'saccessco-chat-button';
+  const micButtonId = 'saccessco-mic-button';
   const resizeHandleId = 'saccessco-chat-resize-handle';
+  const chatMessagesId = 'saccessco-chat-messages';
 
   let chatContainer = null;
+  let chatMessagesDiv = null;
+  let chatInput = null;
+  let sendButton = null;
+  let micButton = null;
+  let resizeHandle = null;
   let pendingConfirmationResolver = null;
   let isDragging = false;
   let dragOffsetX, dragOffsetY;
   let isResizing = false;
   let resizeStartX, resizeStartY, initialWidth, initialHeight;
+  let isListening = false;
 
+  // Define chatModule functions
   function initializeChatArea() {
+    // Only create elements if they don't already exist
     if (document.getElementById(chatContainerId)) {
       chatContainer = document.getElementById(chatContainerId);
+      chatMessagesDiv = document.getElementById(chatMessagesId);
+      chatInput = document.getElementById(chatInputId);
+      sendButton = document.getElementById(chatButtonId);
+      micButton = document.getElementById(micButtonId);
+      resizeHandle = document.getElementById(resizeHandleId);
+      attachEventListeners(); // Re-attach listeners in case of re-initialization
       return;
     }
 
     chatContainer = document.createElement('div');
     chatContainer.id = chatContainerId;
     chatContainer.style.position = 'fixed';
-    chatContainer.bottom = '80px'; // Adjust as needed
-    chatContainer.left = '20px';
-    chatContainer.zIndex = '10001';
-    chatContainer.width = '300px';
-    chatContainer.height = '300px';
-    chatContainer.border = '1px solid #ccc';
-    chatContainer.backgroundColor = '#f9f9f9';
-    chatContainer.overflowY = 'auto';
-    chatContainer.padding = '10px';
-    chatContainer.fontFamily = 'Arial, sans-serif';
-    chatContainer.fontSize = '14px';
-    chatContainer.style.cursor = 'grab'; // Indicate draggable
+    chatContainer.style.bottom = '80px';
+    chatContainer.style.left = '20px';
+    chatContainer.style.zIndex = '10001';
+    chatContainer.style.width = '300px';
+    chatContainer.style.height = '300px';
+    chatContainer.style.border = '1px solid #ccc';
+    chatContainer.style.backgroundColor = '#f9f9f9';
+    chatContainer.style.padding = '10px';
+    chatContainer.style.fontFamily = 'Arial, sans-serif';
+    chatContainer.style.fontSize = '14px';
+    chatContainer.style.cursor = 'grab';
+    chatContainer.style.display = 'flex';
+    chatContainer.style.flexDirection = 'column';
 
-    // Create resize handle
-    const resizeHandle = document.createElement('div');
+    chatMessagesDiv = document.createElement('div');
+    chatMessagesDiv.id = chatMessagesId;
+    chatMessagesDiv.style.flexGrow = '1';
+    chatMessagesDiv.style.overflowY = 'auto';
+    chatMessagesDiv.style.marginBottom = '10px';
+    chatContainer.appendChild(chatMessagesDiv);
+
+    resizeHandle = document.createElement('div');
     resizeHandle.id = resizeHandleId;
     resizeHandle.style.position = 'absolute';
     resizeHandle.style.bottom = '0';
@@ -50,17 +73,17 @@
 
     const inputArea = document.createElement('div');
     inputArea.style.display = 'flex';
-    inputArea.style.marginTop = '10px';
+    inputArea.style.alignItems = 'center';
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = chatInputId;
-    input.style.flexGrow = '1';
-    input.style.padding = '8px';
-    input.style.border = '1px solid #ddd';
-    input.style.borderRadius = '4px';
+    chatInput = document.createElement('input');
+    chatInput.type = 'text';
+    chatInput.id = chatInputId;
+    chatInput.style.flexGrow = '1';
+    chatInput.style.padding = '8px';
+    chatInput.style.border = '1px solid #ddd';
+    chatInput.style.borderRadius = '4px';
 
-    const sendButton = document.createElement('button');
+    sendButton = document.createElement('button');
     sendButton.id = chatButtonId;
     sendButton.textContent = 'Send';
     sendButton.style.padding = '8px 12px';
@@ -71,64 +94,175 @@
     sendButton.style.borderRadius = '4px';
     sendButton.style.cursor = 'pointer';
 
-    sendButton.addEventListener('click', handleUserInput);
-    input.addEventListener('keypress', (event) => {
-      if (event.key === 'Enter') {
-        handleUserInput();
-      }
-    });
+    micButton = document.createElement('button');
+    micButton.id = micButtonId;
+    micButton.innerHTML = '🎤';
+    micButton.title = 'Speak your message';
+    micButton.style.padding = '8px 12px';
+    micButton.style.marginLeft = '5px';
+    micButton.style.border = '1px solid #ddd';
+    micButton.style.backgroundColor = '#eee';
+    micButton.style.color = '#333';
+    micButton.style.borderRadius = '4px';
+    micButton.style.cursor = 'pointer';
 
-    inputArea.appendChild(input);
+    inputArea.appendChild(chatInput);
+    inputArea.appendChild(micButton);
     inputArea.appendChild(sendButton);
     chatContainer.appendChild(inputArea);
 
     document.body.appendChild(chatContainer);
 
-    // Add event listeners for dragging and resizing
-    chatContainer.addEventListener('mousedown', startDrag);
+    attachEventListeners();
+  }
+
+  function attachEventListeners() {
+    if (chatContainer) {
+        chatContainer.removeEventListener('mousedown', startDrag);
+        chatContainer.addEventListener('mousedown', startDrag);
+    }
+    document.removeEventListener('mousemove', drag);
+    document.removeEventListener('mouseup', endDrag);
     document.addEventListener('mousemove', drag);
     document.addEventListener('mouseup', endDrag);
 
-    resizeHandle.addEventListener('mousedown', startResize);
+    if (resizeHandle) {
+        resizeHandle.removeEventListener('mousedown', startResize);
+        resizeHandle.addEventListener('mousedown', startResize);
+    }
+    document.removeEventListener('mousemove', resize);
+    document.removeEventListener('mouseup', endResize);
     document.addEventListener('mousemove', resize);
     document.addEventListener('mouseup', endResize);
+
+    if (sendButton) {
+        sendButton.removeEventListener('click', handleUserInput);
+        sendButton.addEventListener('click', handleUserInput);
+    }
+    if (chatInput) {
+        chatInput.removeEventListener('keypress', handleInputKeypress);
+        chatInput.addEventListener('keypress', handleInputKeypress);
+    }
+    if (micButton) {
+        micButton.removeEventListener('click', handleMicButtonClick);
+        micButton.addEventListener('click', handleMicButtonClick);
+    }
+  }
+
+  function handleInputKeypress(event) {
+    if (event.key === 'Enter') {
+      handleUserInput();
+    }
+  }
+
+  function setMicButtonState(listening) {
+    isListening = listening;
+    if (micButton) {
+      if (listening) {
+        micButton.style.backgroundColor = '#ffc107';
+        micButton.style.color = 'black';
+        micButton.textContent = '🔴';
+        micButton.disabled = true;
+        chatInput.disabled = true;
+        sendButton.disabled = true;
+      } else {
+        micButton.style.backgroundColor = '#eee';
+        micButton.style.color = '#333';
+        micButton.innerHTML = '🎤';
+        micButton.disabled = false;
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+      }
+    }
+  }
+
+  async function handleMicButtonClick() {
+    if (isListening) {
+      console.log("ChatModule: Mic button clicked, already listening. Stopping.");
+      if (window.speechModule && typeof window.speechModule.stopListening === 'function') {
+        window.speechModule.stopListening();
+      }
+      setMicButtonState(false);
+      return;
+    }
+
+    if (!window.speechModule || typeof window.speechModule.startListening !== 'function') {
+      console.warn("ChatModule: window.speechModule.startListening is not available.");
+      addMessage('System', 'Speech input not available.');
+      return;
+    }
+
+    setMicButtonState(true);
+    addMessage('System', 'Listening...');
+    try {
+      const transcript = await window.speechModule.startListening();
+      setMicButtonState(false);
+
+      if (transcript && transcript.length > 0) {
+        chatInput.value = transcript;
+        handleUserInput();
+      } else {
+        addMessage('System', 'No speech detected.');
+      }
+    } catch (error) {
+      setMicButtonState(false);
+      console.error("ChatModule: Speech recognition error:", error);
+      addMessage('System', `Speech recognition error: ${error.message || error}`);
+    }
   }
 
   function addMessage(sender, message) {
-    if (!chatContainer) {
+    if (!chatMessagesDiv) {
+      // This path should ideally not be hit if initializeChatArea is called reliably
+      // before addMessage, but as a safeguard.
       initializeChatArea();
     }
     const messageDiv = document.createElement('div');
     messageDiv.textContent = `${sender}: ${message}`;
-    chatContainer.appendChild(messageDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight; // Scroll to bottom
+    chatMessagesDiv.appendChild(messageDiv);
+    chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
   }
 
   function handleUserInput() {
-    const inputElement = document.getElementById(chatInputId);
-    if (inputElement && inputElement.value.trim() !== '') {
-      const userMessage = inputElement.value.trim();
+    if (chatInput && chatInput.value.trim() !== '') {
+      const userMessage = chatInput.value.trim();
       addMessage('User', userMessage);
-      inputElement.value = ''; // Clear the input
+      chatInput.value = '';
+
       if (pendingConfirmationResolver) {
-        let resp =  pendingConfirmationResolver(userMessage === 'yes');
-        pendingConfirmationResolver = null; // Reset the resolver
-        return resp;
+        const isConfirmed = userMessage.toLowerCase() === 'yes';
+        pendingConfirmationResolver(isConfirmed);
+        pendingConfirmationResolver = null;
+
+        const event = new CustomEvent('saccessco:confirmationResolved', {
+          detail: {
+            userMessage: userMessage,
+            isConfirmed: isConfirmed
+          }
+        });
+        document.dispatchEvent(event);
+
       } else {
-        window.backendCommunicatorModule.sendUserPrompt(userMessage);
+        const event = new CustomEvent('saccessco:userPromptSubmitted', {
+          detail: {
+            prompt: userMessage
+          }
+        });
+        document.dispatchEvent(event);
       }
     }
   }
 
   function askConfirmation(prompt) {
     return new Promise((resolve) => {
-      addMessage('Saccessco', prompt + " (Type 'yes' or 'no' to respond)");
+      addMessage('Saccessco', prompt + " (Type 'yes' or 'no' or use mic)");
       pendingConfirmationResolver = resolve;
     });
   }
 
+  // --- Drag and Resize functions ---
   function startDrag(e) {
-    if (e.target === chatContainer) {
+    if (e.target === chatContainer && e.target.id !== resizeHandleId && e.buttons === 1) {
       isDragging = true;
       dragOffsetX = e.clientX - chatContainer.getBoundingClientRect().left;
       dragOffsetY = e.clientY - chatContainer.getBoundingClientRect().top;
@@ -138,51 +272,86 @@
 
   function drag(e) {
     if (!isDragging) return;
-    chatContainer.style.left = e.clientX - dragOffsetX + 'px';
-    chatContainer.style.top = e.clientY - dragOffsetY + 'px';
-    chatContainer.style.bottom = 'auto'; // Ensure bottom doesn't interfere
-    chatContainer.style.right = 'auto';  // Ensure right doesn't interfere
+    let newLeft = e.clientX - dragOffsetX;
+    let newTop = e.clientY - dragOffsetY;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const chatWidth = chatContainer.offsetWidth;
+    const chatHeight = chatContainer.offsetHeight;
+
+    if (newLeft < 0) newLeft = 0;
+    if (newTop < 0) newTop = 0;
+    if (newLeft + chatWidth > viewportWidth) newLeft = viewportWidth - chatWidth;
+    if (newTop + chatHeight > viewportHeight) newTop = viewportHeight - chatHeight;
+
+    chatContainer.style.left = newLeft + 'px';
+    chatContainer.style.top = newTop + 'px';
+    chatContainer.style.bottom = 'auto';
+    chatContainer.style.right = 'auto';
   }
 
   function endDrag() {
     if (!isDragging) return;
     isDragging = false;
-    chatContainer.style.cursor = 'grab';
+    if (chatContainer) {
+        chatContainer.style.cursor = 'grab';
+    }
   }
 
   function startResize(e) {
-    isResizing = true;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    initialWidth = chatContainer.offsetWidth;
-    initialHeight = chatContainer.offsetHeight;
-    chatContainer.style.cursor = 'nwse-resize';
+    if (e.target.id === resizeHandleId && e.buttons === 1) {
+      isResizing = true;
+      resizeStartX = e.clientX;
+      resizeStartY = e.clientY;
+      initialWidth = chatContainer.offsetWidth;
+      initialHeight = chatContainer.offsetHeight;
+      chatContainer.style.cursor = 'nwse-resize';
+      e.stopPropagation();
+    }
   }
 
   function resize(e) {
     if (!isResizing) return;
     const deltaX = e.clientX - resizeStartX;
     const deltaY = e.clientY - resizeStartY;
-    chatContainer.style.width = initialWidth + deltaX + 'px';
-    chatContainer.style.height = initialHeight + deltaY + 'px';
+
+    const minWidth = 150;
+    const minHeight = 100;
+
+    const maxWidth = window.innerWidth - chatContainer.getBoundingClientRect().left - 20;
+    const maxHeight = window.innerHeight - chatContainer.getBoundingClientRect().top - 20;
+
+    let newWidth = initialWidth + deltaX;
+    let newHeight = initialHeight + deltaY;
+
+    if (newWidth < minWidth) newWidth = minWidth;
+    if (newHeight < minHeight) newHeight = minHeight;
+
+    if (newWidth > maxWidth) newWidth = maxWidth;
+    if (newHeight > maxHeight) newHeight = maxHeight;
+
+    chatContainer.style.width = newWidth + 'px';
+    chatContainer.style.height = newHeight + 'px';
   }
 
   function endResize() {
     if (!isResizing) return;
     isResizing = false;
-    chatContainer.style.cursor = 'grab';
+    if (chatContainer) {
+        chatContainer.style.cursor = 'grab';
+    }
   }
 
   // Expose the module's functions
   window.chatModule = {
-    initializeChatArea,
-    addMessage,
-    askConfirmation
+    initializeChatArea: initializeChatArea,
+    addMessage: addMessage,
+    askConfirmation: askConfirmation
   };
 
-  // Initialize the chat area on load (but keep it hidden initially)
-  initializeChatArea();
-  if (chatContainer) {
-    chatContainer.style.display = 'none';
-  }
+  // REMOVED: The automatic call to window.chatModule.initializeChatArea();
+  // This module will now only define its API, and its UI will be initialized
+  // explicitly by the tests or the main application when needed.
+
 })(window);
