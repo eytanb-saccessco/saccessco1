@@ -25,24 +25,50 @@ class ChatModuleTest(AbstractExtensionPageTest):
         self.driver.execute_script(f"document.getElementById('{self.chat_container_id}').style.display = 'block';")
 
         # Inject mock speechModule for chat_module.js to interact with
+        # IMPORTANT: The mock now matches the `listen(callback, timeoutCb)` signature
+        # and exposes the `stopListening` method.
         self.driver.execute_script("""
             window.speechModule = {
-                startListening: async function() {
-                    // This mock simulates speech recognition.
-                    // It will return a promise that resolves with a predefined transcript.
-                    // We'll use a global variable to control the mock's return value.
-                    console.log("Mocked speechModule.startListening called.");
-                    return new Promise(resolve => {
-                        setTimeout(() => {
-                            const transcript = window.__mockSpeechTranscript || "Mocked speech input.";
-                            console.log("Mocked speechModule.startListening resolving with:", transcript);
-                            resolve(transcript);
-                        }, 50); // Simulate a very short delay for listening
-                    });
+                isListening: false, // Maintain an internal state for the mock
+                recognition: { // Mock recognition object for the mic button state in speech.js
+                    start: function() { console.log('Mock recognition.start()'); },
+                    stop: function() { console.log('Mock recognition.stop()'); },
+                    // onend handler for stopping speech when mic button clicked
+                    onend: function() {
+                        let micButton = document.querySelector("#floating-mic-button") || document.querySelector("#saccessco-mic-button");
+                        if (micButton) {
+                            micButton.classList.remove("mic-active");
+                            micButton.classList.add("mic-inactive");
+                        }
+                    }
                 },
+                // Correctly mock the 'listen' method as expected by chat_module.js
+                listen: function(callback, timeoutCb) {
+                    console.log("Mocked speechModule.listen called. Callback set.");
+                    window.speechModule.isListening = true; // Update internal mock state
+                    // Use a short timeout to simulate speech recognition processing
+                    setTimeout(() => {
+                        const transcript = window.__mockSpeechTranscript || "Mocked speech input.";
+                        console.log("Mocked speechModule.listen resolving via callback with:", transcript);
+                        if (typeof callback === 'function') {
+                            callback(transcript); // Call the provided callback with the transcript
+                        }
+                        window.speechModule.isListening = false; // Reset listening state after result
+                    }, 50); // Simulate a very short delay for listening
+                },
+                // Correctly mock the 'stopListening' method
                 stopListening: function() {
                     console.log("Mock speechModule.stopListening called.");
-                    // In a real scenario, this would stop active recognition.
+                    window.speechModule.isListening = false; // Update internal mock state
+                    // You might want to clear any pending timeouts here in a more advanced mock
+                },
+                speak: function(text) {
+                    console.log("Mocked speechModule.speak called with:", text);
+                    return Promise.resolve(); // Immediately resolve speak promises in mock
+                },
+                timeoutCallback: function() {
+                    console.log("Mock speechModule.timeoutCallback called.");
+                    // This can be used to simulate a timeout if needed in specific tests
                 }
             };
             console.log("Mock window.speechModule injected for chat_module.js tests.");
@@ -105,6 +131,11 @@ class ChatModuleTest(AbstractExtensionPageTest):
             document.addEventListener('saccessco:userPromptSubmitted', function(e) {
                 window.__lastUserPromptEvent = e.detail.prompt;
             });
+            // Mock backendCommunicatorModule.sendUserPrompt if it's called during handleUserInput
+            window.backendCommunicatorModule = window.backendCommunicatorModule || {};
+            window.backendCommunicatorModule.sendUserPrompt = function(prompt) {
+                console.log('TEST STUB: backendCommunicatorModule.sendUserPrompt called from chat_module with: ' + prompt);
+            };
         """)
 
         # Find input and send button
@@ -217,20 +248,27 @@ class ChatModuleTest(AbstractExtensionPageTest):
             document.addEventListener('saccessco:userPromptSubmitted', function(e) {
                 window.__lastUserPromptEvent = e.detail.prompt;
             });
+            // Mock backendCommunicatorModule.sendUserPrompt if it's called during handleUserInput
+            window.backendCommunicatorModule = window.backendCommunicatorModule || {};
+            window.backendCommunicatorModule.sendUserPrompt = function(prompt) {
+                console.log('TEST STUB: backendCommunicatorModule.sendUserPrompt called from chat_module with: ' + prompt);
+            };
         """)
 
         # Click the microphone button
         mic_button.click()
 
         # Wait for listening state (button appearance changes)
+        # Note: We expect '🔴' and micButton.disabled=false (since it can stop listening)
         WebDriverWait(self.driver, 5).until(
             lambda driver: mic_button.text == '🔴'
         )
         print("INFO: Mic button text changed to '🔴'")
 
         # Assert that input and send button are disabled while listening
-        self.assertTrue(chat_input.get_attribute('disabled'), "Chat input should be disabled while listening.")
-        self.assertTrue(send_button.get_attribute('disabled'), "Send button should be disabled while listening.")
+        # Use get_attribute('disabled') which returns "true" or None
+        self.assertEqual(chat_input.get_attribute('disabled'), 'true', "Chat input should be disabled while listening.")
+        self.assertEqual(send_button.get_attribute('disabled'), 'true', "Send button should be disabled while listening.")
         print("INFO: Input and send button are disabled while listening.")
 
         # Wait for the userPromptSubmitted event to be dispatched with the correct transcript
@@ -246,8 +284,8 @@ class ChatModuleTest(AbstractExtensionPageTest):
             lambda driver: mic_button.text == '🎤'
         )
         print("INFO: Mic button text changed back to '🎤'")
-        self.assertFalse(chat_input.get_attribute('disabled'), "Chat input should be re-enabled after listening.")
-        self.assertFalse(send_button.get_attribute('disabled'), "Send button should be re-enabled after listening.")
+        self.assertIsNone(chat_input.get_attribute('disabled'), "Chat input should be re-enabled after listening.")
+        self.assertIsNone(send_button.get_attribute('disabled'), "Send button should be re-enabled after listening.")
         print("INFO: Input and send button are re-enabled after listening.")
 
         # Verify input was cleared by handleUserInput

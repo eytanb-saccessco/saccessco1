@@ -25,7 +25,13 @@ class WebSocketAIReceiver {
             return; // Prevent further errors
         }
 
-        this.websocketUrl = window.configuration.SACCESSCO_WEBSOCKET_URL + "/" + window.conversation_id + "/";
+        let baseUrl = window.configuration.SACCESSCO_WEBSOCKET_URL;
+        if (!baseUrl.endsWith('/')) {
+          baseUrl += '/';
+        }
+        this.websocketUrl = baseUrl + window.conversation_id + "/";
+        console.log("--DEBUG--: window.configuration.SACCESSCO_WEBSOCKET_URL: " + window.configuration.SACCESSCO_WEBSOCKET_URL);
+        console.log("--DEBUG--:  window.conversation_id: " +  window.conversation_id);
         console.log(`WebSocketAIReceiver: Constructed WebSocket URL: ${this.websocketUrl}`);
 
         this.socket = null; // Will hold the WebSocket instance

@@ -62,11 +62,7 @@ class WebSocketAIResponseTest(AbstractExtensionPageTest):
             )
             print("INFO: WebSocket connection established (verified via readyState).")
         except TimeoutException:
-            js_logs = self.driver.get_log('browser')
-            print("\n--- BROWSER CONSOLE LOGS (from client-side during connection timeout) ---")
-            for entry in js_logs:
-                print(entry)
-            print("-------------------------------------------------------------------------")
+            self._get_browser_console_logs()
             self.fail("Timed out waiting for WebSocket to connect. Check browser logs above and WebSocket readyState.")
 
         # Give the WebSocket a *tiny* moment for any initial messages (like client_hello) to be sent,
