@@ -78,6 +78,7 @@ class Conversation:
                 try:
                     # Remove markdown code block delimiters if present
                     json_str = ai_response.replace("```json", "").replace("```", "").strip()
+                    logger.info(f"--DEBUG--: _inner thread: self.ai_engine.response: {json_str}")
                     ai_response_object = json.loads(json_str)
                 except json.JSONDecodeError as e:
                     logger.error(

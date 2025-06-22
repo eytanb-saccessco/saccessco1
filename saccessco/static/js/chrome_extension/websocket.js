@@ -47,22 +47,30 @@ class WebSocketAIReceiver {
     handleAiMessage(message) {
         const data = message;
         console.log("DEBUG: handleAiMessage called with parsed data:", data);
+        // window.debug.message("handleAiMessage called with parsed data:" + JSON.stringify(data));
+        this.handleSpeak(data);
+        // this.handleExecute(data);
+    }
 
-        if (data.speak !== null && data.speak !== undefined && data.speak.length > 0) {
-            console.log("Speaking: " + data.speak);
-            if (window.speechModule && typeof window.speechModule.speak === 'function') {
-                window.speechModule.speak(data.speak);
-            } else {
-                console.warn("window.speechModule.speak is not available.");
-            }
-        }
+    handleExecute(data) {
         if (data.execute !== null && data.execute !== undefined && Array.isArray(data.execute) && data.execute.length > 0) {
             console.log("Executing: " + data.execute);
-            if (window.pageManipulatorModule && typeof window.pageManipulatorModule.executePlan === 'function') {
-                window.pageManipulatorModule.executePlan(data.execute);
-            } else {
-                console.warn("window.pageManipulatorModule.executePlan is not available.");
-            }
+            window.pageManipulatorModule.executePlan(data.execute);
+        }
+    }
+
+    handleSpeak(data) {
+        if (data.speak !== null && data.speak !== undefined && data.speak.length > 0) {
+            console.log("Speaking: " + data.speak);
+            window.speechModule.speak(data.speak);
+            window.chatModule.addMessage("Saccessco", data.speak);
+       }
+    }
+
+    handleDomManipulation(data) {
+        if (data.dom_manipulation) {
+            console.log("Execeuting: " + data.dom_manipulation.script, + " with params: " + JSON.parse(data.dom_manipulation.parameters));
+            window.domManipulatorModule.executeDynamicDomScript(data.dom_manipulation.script, data.dom_manipulation.parameters)
         }
     }
 
@@ -100,7 +108,7 @@ class WebSocketAIReceiver {
         this.socket.onmessage = (event) => {
             console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: RAW message received (onMessage handler FIRED!):', event.data);
             window.__receivedWebSocketMessages.push(event.data); // Store the raw message for Python to inspect
-
+            window.debug.message("Websocket received ai response: " + JSON.stringify(event.data));
             try {
                 const data = JSON.parse(event.data);
                 const messageType = data.type;
@@ -125,6 +133,7 @@ class WebSocketAIReceiver {
 
         this.socket.onclose = (event) => {
             console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Connection closed. Code:', event.code, 'Reason:', event.reason, 'Was Clean:', event.wasClean);
+            window.debug.message("WebSocketAIReceiver: Connection closed. Code: " + event.code + " reason: " + event.reason)
             if (!this.isClosingIntentionally && event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
                 console.log(`--- CRITICAL DEBUG: WebSocketAIReceiver Attempting to reconnect in ${this.reconnectDelay}ms (Attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})...`);
                 setTimeout(() => {
@@ -137,6 +146,7 @@ class WebSocketAIReceiver {
         };
         this.socket.onerror = (event) => {
             console.error('--- CRITICAL DEBUG: WebSocketAIReceiver: Error occurred. ReadyState:', this.socket.readyState, event);
+            window.debug.message("WebSocketAIReceiver: Error occurred. ReadyState:" + event);
         };
         console.log('--- CRITICAL DEBUG: WebSocketAIReceiver: Socket initialized');
 

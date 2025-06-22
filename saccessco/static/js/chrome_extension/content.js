@@ -2,7 +2,8 @@
 const micButton = document.createElement("button");
 micButton.id = "floating-mic-button";
 micButton.classList.add("mic-inactive"); // Initial style (e.g., closed state)
-micButton.textContent = "🎤"; // Initial icon for "closed" state
+// micButton.textContent = "🎤"; Initial icon for "closed" state
+micButton.textContent = "💬"; // Changed to speech bubble for "hidden" state
 document.body.appendChild(micButton);
 
 // This ID is generated once when the extension is first loaded into the page.
@@ -61,6 +62,7 @@ micButton.addEventListener("click", () => {
         // Add a welcoming message to the chat if the chatModule is available.
         if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
             window.chatModule.addMessage("Saccessco", "Welcome! The extension is now loaded.");
+            window.speechModule.speak("Wellcome, this is Saccesco, How may I help you?")
         } else {
             console.warn("chatModule or addMessage function not available to send welcome message.");
         }

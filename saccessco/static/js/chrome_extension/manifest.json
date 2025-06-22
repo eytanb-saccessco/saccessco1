@@ -13,12 +13,13 @@
       "matches": ["<all_urls>"],
       "js": [
         "configuration.js",
+        "debug.js",
         "chat_module.js",
         "speech.js",
         "content.js",
         "backend_communicator.js",
         "page_change_observer.js",
-        "page_manipulator.js",
+        "dom_manipulator.js",
         "websocket.js"
       ],
       "css": ["styles.css"],

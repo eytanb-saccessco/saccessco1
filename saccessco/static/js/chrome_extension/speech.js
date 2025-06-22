@@ -14,9 +14,9 @@
     recognition: null,
     _listeningBeforeSpeak: false,
     silenceTimeoutId: null,
-    silenceTimeoutDuration: 2000, // Adjust as needed (milliseconds)
+    silenceTimeoutDuration: 3000, // Adjust as needed (milliseconds)
     listenTimeoutId: null,
-    listenTimeoutDuration: 6000, // Maximum listening time without a final result (milliseconds)
+    listenTimeoutDuration: 6500, // Maximum listening time without a final result (milliseconds)
     finalTranscript: '',
     timeoutCallback: null, // General callback for listen timeout
     pendingConfirmationResolver: null, // Resolver for askConfirmation promise

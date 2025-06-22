@@ -271,6 +271,7 @@
      * an overall status ('completed' or 'failed') and an array of individual action results.
      */
     async function executePlan(plan) {
+        window.debug.message("Executing Plan: " + JSON.stringify(plan))
         const individualActionResults = [];
         let overallStatus = "completed"; // Assume success unless an action fails
 
@@ -374,6 +375,7 @@
 
                 if (!actionResult.success) {
                     overallStatus = "failed"; // If any action fails, the whole plan fails
+                    window.debug.message("Failed plan step: " + JSON.stringify(individualActionResults.at(-1)));
                 }
 
                 // Add a small delay between actions to allow page to react
@@ -400,18 +402,6 @@
     // Expose functions to the global window object
     window.pageManipulatorModule = {
         executePlan,
-        // Expose individual functions for testing/mocking purposes if needed
-        findElement,
-        type,
-        click,
-        scrollToElement,
-        checkCheckbox,
-        checkRadioButton,
-        selectOptionByValue,
-        selectOptionByIndex,
-        simulateEnter,
-        focusElement,
-        submitForm
     };
 
     console.log("Page Manipulator module loaded.");
