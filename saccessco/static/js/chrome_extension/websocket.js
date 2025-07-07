@@ -45,18 +45,10 @@ class WebSocketAIReceiver {
     }
 
     handleAiMessage(message) {
-        const data = message;
-        console.log("DEBUG: handleAiMessage called with parsed data:", data);
-        // window.debug.message("handleAiMessage called with parsed data:" + JSON.stringify(data));
-        this.handleSpeak(data);
-        // this.handleExecute(data);
-    }
-
-    handleExecute(data) {
-        if (data.execute !== null && data.execute !== undefined && Array.isArray(data.execute) && data.execute.length > 0) {
-            console.log("Executing: " + data.execute);
-            window.pageManipulatorModule.executePlan(data.execute);
-        }
+        console.log("DEBUG: handleAiMessage called with parsed data:", JSON.stringify(message));
+        window.debug.message("handleAiMessage called with parsed data:" + JSON.stringify(message));
+        this.handleSpeak(message);
+        this.handleExecute(message).then(r => {})
     }
 
     handleSpeak(data) {
@@ -67,13 +59,58 @@ class WebSocketAIReceiver {
        }
     }
 
-    handleDomManipulation(data) {
-        if (data.dom_manipulation) {
-            console.log("Execeuting: " + data.dom_manipulation.script, + " with params: " + JSON.parse(data.dom_manipulation.parameters));
-            window.domManipulatorModule.executeDynamicDomScript(data.dom_manipulation.script, data.dom_manipulation.parameters)
+    async handleExecute(data) {
+      // 1. Validate data.plan
+      let script = data.execute;
+      if (!script || !Array.isArray(script.plan)) {
+        console.error("handleExecute Error: 'script' or 'script.plan' is missing or not an array.", script);
+        if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+          window.chatModule.addMessage("Saccessco", "Failed to execute plan: Plan data is invalid or missing.");
         }
-    }
+        return; // Exit if validation fails
+      }
 
+      // Optional: Further validate that each item in data.plan is an object
+      const isPlanValid = script.plan.every(item => typeof item === 'object' && item !== null);
+      if (!isPlanValid) {
+        console.error("handleExecute Error: 'script.plan' contains non-object items. Each plan item must be a JSON object.", script.plan);
+        if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+          window.chatModule.addMessage("Saccessco", "Failed to execute plan: Plan contains invalid action objects.");
+        }
+        return; // Exit if further validation fails
+      }
+
+      // 2. Prepare parameters
+      // Ensure data.parameters is an object; default to an empty object if null or undefined
+      const parameters = script.parameters && typeof script.parameters === 'object' ? script.parameters : {};
+
+      // Log the prepared data for debugging
+      console.log("handleExecute: Prepared to execute plan.", {
+        plan: data.plan,
+        parameters: parameters
+      });
+
+      // 3. Call window.pageManipulatorModule.executePlan
+      if (window.pageManipulatorModule && typeof window.pageManipulatorModule.executePlan === 'function') {
+        try {
+          await window.pageManipulatorModule.executePlan(script.plan, parameters);
+          console.log("handleExecute: Plan execution initiated successfully.");
+          if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+            window.chatModule.addMessage("Saccessco", "Plan execution started.");
+          }
+        } catch (error) {
+          console.error("handleExecute Error: Calling pageManipulatorModule.executePlan failed.", error);
+          if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+            window.chatModule.addMessage("Saccessco", "Error during plan execution: " + (error.message || error));
+          }
+        }
+      } else {
+        console.error("handleExecute Error: window.pageManipulatorModule or executePlan is not available.");
+        if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+          window.chatModule.addMessage("Saccessco", "Page manipulation module not ready.");
+        }
+      }
+    }
     /**
      * Establishes the WebSocket connection.
      */

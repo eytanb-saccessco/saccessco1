@@ -3,406 +3,425 @@
 
 (function(window) {
 
+  class parameterManager {
     /**
-     * Finds an HTML element using a CSS selector.
-     * @param {string} selector - The CSS selector for the element.
-     * @returns {HTMLElement|null} The found element or null if not found.
+     * Initializes the ParameterManager with an optional JSON object of initial parameters.
+     * @param {object} [initialParams={}] - An optional JSON object containing
+     * initial key-value pairs for parameters.
      */
-    function findElement(selector) {
-        if (!selector) {
-            console.error("PageManipulator: findElement called with undefined or null selector.");
-            return null;
-        }
-        const element = document.querySelector(selector);
-        if (!element) {
-            console.warn(`PageManipulator: Element with selector "${selector}" not found.`);
-        }
-        return element;
+    constructor(initialParams = {}) {
+      if (typeof initialParams !== 'object' || initialParams === null) {
+        console.warn("ParameterManager: initialParams provided is not a valid object. Initializing with empty parameters.");
+        this._parameters = {};
+      } else {
+        this._parameters = { ...initialParams };
+      }
+      console.log("ParameterManager initialized with parameters:", this._parameters);
     }
 
     /**
-     * Types a given value into an input field or contenteditable element.
-     * @param {string} selector - The CSS selector for the input element.
-     * @param {string} value - The value to type.
-     * @returns {Object} An object with success status and an error message if applicable.
+     * Retrieves the value for a given parameter key.
+     * If the key exists in the initialized parameters and its value is not null/undefined,
+     * it returns that value. Otherwise, it calls `window.speechModule.askUserInput`
+     * to prompt the user for the value.
+     *
+     * @param {string} key - The name of the parameter to retrieve.
+     * @param {string} [promptMessage] - Optional. The message to display to the user if prompting is needed.
+     * Defaults to "Please provide the value for [key]".
+     * @param {boolean} [isSensitive=false] - Optional. Indicates if the user's input is sensitive
+     * (e.g., password), which might affect how `askUserInput` handles it (e.g., masked input).
+     * @returns {Promise<any|null>} A Promise that resolves with the parameter's value,
+     * or `null` if the parameter is not found and the user cancels/does not provide input,
+     * or if `window.speechModule.askUserInput` is not available.
      */
-    function type(selector, value) {
-        const element = findElement(selector);
-        if (!element) {
-            return { success: false, error: `Element with selector "${selector}" not found for 'type' action.` };
-        }
+    async get(key, promptMessage, isSensitive = false) {
+      if (key == null || key === 'undefined')  {
+          return null;
+      }
 
-        if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-            element.value = value;
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`PageManipulator: Typed "${value}" into "${selector}".`);
-            return { success: true };
-        } else if (element.isContentEditable) {
-            element.textContent = value;
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`PageManipulator: Set content of editable element "${selector}" to "${value}".`);
-            return { success: true };
+      if (key in this._parameters) {
+        console.log(`ParameterManager: Found '${key}' in internal parameters.`);
+        return this._parameters[key];
+      }
+
+      console.log(`ParameterManager: '${key}' not found or is null/undefined. Attempting to prompt user.`);
+
+      if (!window.speechModule || typeof window.speechModule.askUserInput !== 'function') {
+        console.error(`ParameterManager: window.speechModule.askUserInput is not available. Cannot prompt user for '${key}'.`);
+        return null;
+      }
+
+      try {
+        const defaultPrompt = `Please provide the value for ${key}:`;
+        const finalPromptMessage = promptMessage || defaultPrompt;
+
+        const userInput = await window.speechModule.askUserInput(finalPromptMessage, isSensitive);
+
+        if (userInput === null || typeof userInput === 'undefined' || (typeof userInput === 'string' && userInput.trim() === '')) {
+          const cancellationMessage = `Input for '${key}' was not provided or cancelled. Action may be incomplete.`;
+          console.warn(`ParameterManager: ${cancellationMessage}`); // Log the warning
+          // --- FIX: Add message to chat module on cancellation ---
+          if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+              window.chatModule.addMessage("Saccessco", cancellationMessage);
+          }
+          // ----------------------------------------------------
+          return null; // User cancelled or provided no input
         } else {
-            return { success: false, error: `Element "${selector}" is not an input, textarea, or contenteditable for 'type' action.` };
+          console.log(`ParameterManager: User provided input for '${key}'. Storing it for future reference.`);
+          this._parameters[key] = userInput;
+          return userInput;
         }
+      } catch (error) {
+        console.error(`ParameterManager: Error while prompting user for '${key}':`, error);
+        // Also send an error message to chat if the prompt itself failed
+        if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+            window.chatModule.addMessage("Saccessco", `Error retrieving input for '${key}': ${error.message || 'Unknown error.'}`);
+        }
+        return null;
+      }
     }
 
     /**
-     * Clicks an HTML element.
-     * @param {string} selector - The CSS selector for the element to click.
-     * @returns {Object} An object with success status and an error message if applicable.
+     * Sets a parameter's value directly.
+     * @param {string} key - The name of the parameter to set.
+     * @param {any} value - The value to set for the parameter.
      */
-    function click(selector) {
-        const element = findElement(selector);
-        if (!element) {
-            return { success: false, error: `Element with selector "${selector}" not found for 'click' action.` };
-        }
-        try {
-            element.click();
-            console.log(`PageManipulator: Clicked element "${selector}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error clicking element "${selector}": ${e.message}` };
-        }
+    set(key, value) {
+      this._parameters[key] = value;
+      console.log(`ParameterManager: Parameter '${key}' set to:`, value);
     }
 
     /**
-     * Scrolls an element or the window into view.
-     * @param {string} selector - The CSS selector for the element to scroll to.
-     * @param {string} behavior - 'auto', 'smooth', or 'instant'.
-     * @returns {Object} An object with success status and an error message if applicable.
+     * Returns a copy of all current parameters managed by the instance.
+     * @returns {object} A shallow copy of the internal parameters object.
      */
-    function scrollToElement(selector, behavior = 'smooth') {
-        const element = findElement(selector);
-        if (!element) {
-            return { success: false, error: `Element with selector "${selector}" not found for 'scroll_to' action.` };
-        }
-        try {
-            element.scrollIntoView({ behavior: behavior, block: 'center' });
-            console.log(`PageManipulator: Scrolled to element "${selector}" with behavior "${behavior}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error scrolling to element "${selector}": ${e.message}` };
-        }
+    getAll() {
+      return { ...this._parameters };
     }
+  }
 
-    /**
-     * Checks/unchecks a checkbox.
-     * @param {string} selector - The CSS selector for the checkbox.
-     * @param {boolean} checked - True to check, false to uncheck.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function checkCheckbox(selector, checked) {
-        const element = findElement(selector);
-        if (!element || element.type !== 'checkbox') {
-            return { success: false, error: `Element "${selector}" is not a checkbox or not found.` };
-        }
-        try {
-            element.checked = checked;
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`PageManipulator: ${checked ? 'Checked' : 'Unchecked'} checkbox "${selector}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error checking checkbox "${selector}": ${e.message}` };
-        }
-    }
-
-    /**
-     * Selects a radio button.
-     * @param {string} selector - The CSS selector for the radio button.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function checkRadioButton(selector) {
-        const element = findElement(selector);
-        if (!element || element.type !== 'radio') {
-            return { success: false, error: `Element "${selector}" is not a radio button or not found.` };
-        }
-        try {
-            element.checked = true;
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`PageManipulator: Checked radio button "${selector}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error checking radio button "${selector}": ${e.message}` };
-        }
-    }
-
-    /**
-     * Selects an option in a <select> element by value.
-     * @param {string} selector - The CSS selector for the <select> element.
-     * @param {string} value - The value of the option to select.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function selectOptionByValue(selector, value) {
-        const selectElement = findElement(selector);
-        if (!selectElement || selectElement.tagName !== 'SELECT') {
-            return { success: false, error: `Element "${selector}" is not a select element or not found.` };
-        }
-        try {
-            selectElement.value = value;
-            selectElement.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`PageManipulator: Selected option with value "${value}" in "${selector}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error selecting option by value in "${selector}": ${e.message}` };
-        }
-    }
-
-    /**
-     * Selects an option in a <select> element by index.
-     * @param {string} selector - The CSS selector for the <select> element.
-     * @param {number} index - The index of the option to select.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function selectOptionByIndex(selector, index) {
-        const selectElement = findElement(selector);
-        if (!selectElement || selectElement.tagName !== 'SELECT') {
-            return { success: false, error: `Element "${selector}" is not a select element or not found.` };
-        }
-        if (index < 0 || index >= selectElement.options.length) {
-            return { success: false, error: `Index "${index}" out of bounds for select element "${selector}".` };
-        }
-        try {
-            selectElement.selectedIndex = index;
-            selectElement.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log(`PageManipulator: Selected option at index "${index}" in "${selector}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error selecting option by index in "${selector}": ${e.message}` };
-        }
-    }
-
-    /**
-     * Simulates pressing the Enter key on an element.
-     * @param {string} selector - The CSS selector for the element.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function simulateEnter(selector) {
-        const element = findElement(selector);
-        if (!element) {
-            return { success: false, error: `Element with selector "${selector}" not found for 'simulate_enter' action.` };
-        }
-        try {
-            const event = new KeyboardEvent('keypress', {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true,
-                cancelable: true
-            });
-            element.dispatchEvent(event);
-            console.log(`PageManipulator: Simulated Enter keypress on "${selector}".`);
-            return { success: true };
-        } catch (e) {
-            return { success: false, error: `Error simulating Enter on "${selector}": ${e.message}` };
-        }
-    }
-
-    /**
-     * Focuses on an element.
-     * @param {string} selector - The CSS selector for the element to focus.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function focusElement(selector) {
-        const element = findElement(selector);
-        if (!element) {
-            return { success: false, error: `Element with selector "${selector}" not found for 'focus' action.` };
-        }
-        if (typeof element.focus === 'function') {
-            element.focus();
-            console.log(`PageManipulator: Focused on element "${selector}".`);
-            return { success: true };
+  // --- Mock window.speechModule.askUserInput for demonstration/testing ---
+  if (!window.speechModule || typeof window.speechModule.askUserInput !== 'function') {
+    window.speechModule = window.speechModule || {};
+    window.speechModule.askUserInput = async (message, sensitive = false) => {
+      console.log(`(MOCK) SpeechModule asked for input: "${message}" (Sensitive: ${sensitive})`);
+      return new Promise(resolve => {
+        const mockInput = prompt(`(MOCK UI) ${message}\n(Type 'null' to simulate no input/cancel)`);
+        if (mockInput === 'null') {
+          resolve(null);
         } else {
-            return { success: false, error: `Element "${selector}" cannot be focused.` };
+          resolve(mockInput);
         }
-    }
+      });
+    };
+    console.log("Mock window.speechModule.askUserInput initialized for demonstration.");
+  }
 
-    /**
-     * Submits a form or a button within a form.
-     * @param {string} selector - The CSS selector for the form or a button/input within a form.
-     * @returns {Object} An object with success status and an error message if applicable.
-     */
-    function submitForm(selector) {
-        let element = findElement(selector);
-        let formElement = null;
+    const pageManipulator = {
 
-        if (!element) {
-            return { success: false, error: `Element with selector "${selector}" not found for 'submit_form' action.` };
-        }
-
-        if (element.tagName === 'FORM') {
-            formElement = element;
-        } else if (element.form) { // If it's an input/button inside a form
-            formElement = element.form;
-        }
-
-        if (!formElement) {
-            return { success: false, error: `No form found to submit for selector "${selector}".` };
-        }
-
-        try {
-            // Dispatch a submit event. The HTML's onsubmit handler should prevent default.
-            const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
-            const defaultPrevented = !formElement.dispatchEvent(submitEvent);
-
-            if (defaultPrevented) {
-                console.log(`PageManipulator: Form submit event dispatched and default prevented for selector "${selector}".`);
-                return { success: true };
-            } else {
-                // If the default was not prevented, it means the form might actually submit.
-                console.warn(`PageManipulator: Form submit event for "${selector}" was not prevented by handler. Actual submission may occur.`);
-                return { success: true };
+        /**
+         * Finds an HTML element using a CSS selector and waits until it is visible,
+         * or a timeout occurs.
+         *
+         * @param {string} selector - The CSS selector for the element.
+         * @param {number} [timeoutMs=5000] - Maximum time to wait for the element to be visible in milliseconds.
+         * @param {number} [checkIntervalMs=100] - How often to check for the element's visibility in milliseconds.
+         * @returns {Promise<HTMLElement|null>} A Promise that resolves with the found and visible element,
+         * or `null` if the timeout is reached or the selector is invalid.
+         */
+        findElement: async (selector, timeoutMs = 5000, checkIntervalMs = 100) => {
+            if (!selector || typeof selector !== 'string') {
+                console.error("PageManipulator: findElement called with invalid or null selector.");
+                if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+                    window.chatModule.addMessage("Saccessco", `Error finding element: Invalid selector provided.`);
+                }
+                return null;
             }
-        } catch (e) {
-            return { success: false, error: `Error dispatching submit event for selector "${selector}": ${e.message}` };
-        }
-    }
 
-    /**
-     * Executes a plan of actions on the page.
-     * This is called by websocket.js as part of the AI's 'execute' command.
-     * @param {Array<Object>} plan - An array of action objects.
-     * Each object should have at least 'action' (e.g., 'type', 'click')
-     * and 'selector'. Other properties like 'value' are action-specific.
-     * @returns {Promise<Object>} A promise that resolves with an object containing
-     * an overall status ('completed' or 'failed') and an array of individual action results.
-     */
-    async function executePlan(plan) {
-        window.debug.message("Executing Plan: " + JSON.stringify(plan))
-        const individualActionResults = [];
-        let overallStatus = "completed"; // Assume success unless an action fails
+            const startTime = Date.now();
 
-        try {
-            if (!Array.isArray(plan)) {
-                console.error("PageManipulator: executePlan received a non-array plan:", plan);
+            return new Promise(resolve => {
+                const intervalId = setInterval(() => {
+                    const element = document.querySelector(selector);
+
+                    if (element) {
+                        // Check for visibility
+                        const style = window.getComputedStyle(element);
+                        const isVisible = style.display !== 'none' &&
+                                          style.visibility !== 'hidden' &&
+                                          style.opacity !== '0' &&
+                                          element.offsetWidth > 0 &&
+                                          element.offsetHeight > 0;
+
+                        if (isVisible) {
+                            clearInterval(intervalId);
+                            const duration = Date.now() - startTime;
+                            console.log(`PageManipulator: findElement found and element "${selector}" visible in ${duration}ms.`);
+                            window.debug.message(`Element "${selector}" found and visible in ${duration}ms.`);
+                            resolve(element);
+                            return;
+                        }
+                    }
+
+                    if (Date.now() - startTime >= timeoutMs) {
+                        clearInterval(intervalId);
+                        const errorMsg = `PageManipulator: findElement timed out waiting for element "${selector}" to be visible after ${timeoutMs}ms.`;
+                        console.warn(errorMsg);
+                        if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
+                            window.chatModule.addMessage("Saccessco", `Element not found or visible: ${selector}.`);
+                        }
+                        resolve(null);
+                    }
+                }, checkIntervalMs);
+            });
+        },
+        getElement: this.findElement,
+
+        typeInto: (element, data) => {
+            if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
+                element.value = data
+                element.dispatchEvent(new Event('input', {bubbles: true}));
+                element.dispatchEvent(new Event('change', {bubbles: true}));
+                console.log(`PageManipulator: Typed "${data}" into "${element}".`);
+                return {success: true};
+            } else if (element.isContentEditable) {
+                element.textContent = data;
+                element.dispatchEvent(new Event('input', {bubbles: true}));
+                element.dispatchEvent(new Event('change', {bubbles: true}));
+                console.log(`PageManipulator: Set content of editable element "${element}" to "${data}".`);
+                return {success: true};
+            } else {
                 return {
-                    status: "failed",
-                    results: [{ success: false, error: "Invalid plan: not an array." }]
+                    success: false,
+                    error: `Element "${element}" is not an input, textarea, or contenteditable for 'type' action.`
                 };
             }
+        },
 
-            for (const action of plan) {
-                let actionResult = { success: true, error: '' }; // Initialize as success for each action
-                const currentSelector = action.selector || action.element;
+        enterValue: this.typeInto,
+        setValue: this.typeInto,
 
-                console.log("PageManipulator: Executing action:", action);
-
-                // Handle sensitive/user input first, before attempting the action
-                if (action.is_sensitive || action.from_user_input) {
-                    if (!window.chatModule || typeof window.chatModule.askConfirmation !== 'function') {
-                        actionResult = { success: false, error: "chatModule.askConfirmation is not available for sensitive/user input." };
-                    } else {
-                        const confirmationPrompt = action.is_sensitive ?
-                            `This action involves sensitive data (e.g., password). Do you want to proceed?` :
-                            `Please provide the value for ${currentSelector}:`;
-
-                        const confirmationResponse = await window.chatModule.askConfirmation(confirmationPrompt);
-
-                        if (action.is_sensitive) {
-                            if (confirmationResponse === false) { // Explicitly check for false for denial
-                                actionResult = { success: false, error: "Confirmation denied for sensitive input." };
-                            } else {
-                                // If confirmed (true or any other truthy value), proceed with the original action
-                                console.log("PageManipulator: Sensitive input confirmed. Proceeding with action.");
-                            }
-                        } else if (action.from_user_input) {
-                            if (typeof confirmationResponse === 'string' && confirmationResponse.length > 0) {
-                                action.data = confirmationResponse; // Update action data with user's input
-                                console.log(`PageManipulator: User provided input for ${currentSelector}: "${confirmationResponse}".`);
-                            } else {
-                                actionResult = { success: false, error: "User input not provided or invalid." };
-                            }
-                        }
-                    }
-                }
-
-                // Only proceed with the actual action if the previous step (confirmation/user input) was successful
-                if (actionResult.success) { // Check if actionResult is still successful
-                    try {
-                        switch (action.action) {
-                            case 'type':
-                            case 'enter_value':
-                                actionResult = type(currentSelector, action.value || action.data);
-                                break;
-                            case 'click':
-                                actionResult = click(currentSelector);
-                                break;
-                            case 'scroll_to':
-                                actionResult = scrollToElement(currentSelector, action.behavior);
-                                break;
-                            case 'check_checkbox':
-                                actionResult = checkCheckbox(currentSelector, action.checked);
-                                break;
-                            case 'check_radio':
-                                actionResult = checkRadioButton(currentSelector);
-                                break;
-                            case 'select_option_by_value':
-                                actionResult = selectOptionByValue(currentSelector, action.value);
-                                break;
-                            case 'select_option_by_index':
-                                actionResult = selectOptionByIndex(currentSelector, action.index);
-                                break;
-                            case 'simulate_enter':
-                                actionResult = simulateEnter(currentSelector);
-                                break;
-                            case 'focus':
-                                actionResult = focusElement(currentSelector);
-                                break;
-                            case 'submit_form':
-                                actionResult = submitForm(currentSelector);
-                                break;
-                            default:
-                                actionResult = { success: false, error: `Unknown action type: ${action.action}` };
-                                console.warn(actionResult.error);
-                                break;
-                        }
-                    } catch (e) {
-                        actionResult = { success: false, error: `Error executing action ${action.action} on ${currentSelector}: ${e.message}` };
-                        console.error(actionResult.error, e);
-                    }
-                }
-
-                individualActionResults.push({
-                    action: action.action,
-                    selector: currentSelector,
-                    value: action.value || action.data,
-                    success: actionResult.success,
-                    error: actionResult.error
-                });
-
-                if (!actionResult.success) {
-                    overallStatus = "failed"; // If any action fails, the whole plan fails
-                    window.debug.message("Failed plan step: " + JSON.stringify(individualActionResults.at(-1)));
-                }
-
-                // Add a small delay between actions to allow page to react
-                if (action.delay && typeof action.delay === 'number') {
-                    await new Promise(resolve => setTimeout(resolve, action.delay));
-                } else {
-                    await new Promise(resolve => setTimeout(resolve, 50)); // Default small delay
-                }
+        click: (element, data) => {
+            try {
+                element.click();
+                console.log(`PageManipulator: Clicked element "${element}".`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error clicking element "${element}": ${e.message}`};
             }
-            console.log("PageManipulator: Plan execution finished. Overall status:", overallStatus, "Results:", individualActionResults);
-            return {
-                status: overallStatus,
-                results: individualActionResults
-            };
-        } catch (topLevelError) {
-            console.error("PageManipulator: Top-level error during plan execution:", topLevelError);
-            return {
-                status: "failed",
-                results: individualActionResults.length > 0 ? individualActionResults : [{ success: false, error: `Top-level execution error: ${topLevelError.message}` }]
-            };
-        }
+        },
+
+        scrollTo: (element, data) => {
+            try {
+                element.scrollIntoView(true);
+                console.log(`PageManipulator: Scrolled to element "${element}"`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error scrolling to element "${element}": ${e.message}`};
+            }
+        },
+
+        checkCheckbox: (element, data = true) => {
+            if (!element || element.type !== 'checkbox') {
+                return {success: false, error: `Element "${selector}" is not a checkbox or not found.`};
+            }
+            try {
+                element.checked = data;
+                element.dispatchEvent(new Event('change', {bubbles: true}));
+                console.log(`PageManipulator: ${data ? 'Checked' : 'Unchecked'} checkbox "${element}".`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error checking checkbox "${element}": ${e.message}`};
+            }
+        },
+
+        checkRadioButton: (element, data = true) => {
+            if (!element || element.type !== 'radio') {
+                return {success: false, error: `Element "${selector}" is not a radio button or not found.`};
+            }
+            try {
+                element.checked = data;
+                element.dispatchEvent(new Event('change', {bubbles: true}));
+                console.log(`PageManipulator: Checked radio button "${element}".`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error checking radio button "${element}": ${e.message}`};
+            }
+        },
+
+        selectOptionByValue: (element, data) => {
+            if (!element || element.tagName !== 'SELECT') {
+                return {success: false, error: `Element "${element}" is not a select element or not found.`};
+            }
+            try {
+                element.value = data;
+                element.dispatchEvent(new Event('change', {bubbles: true}));
+                console.log(`PageManipulator: Selected option with value "${value}" in "${element}".`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error selecting option by value in "${element}": ${e.message}`};
+            }
+        },
+
+        selectOptionByIndex: (element, data) => {
+            if (!element || element.tagName !== 'SELECT') {
+                return {success: false, error: `Element "${element}" is not a select element or not found.`};
+            }
+            const index = parseInt(data);
+            if (index < 0 || index >= element.options.length) {
+                return {success: false, error: `Index "${index}" out of bounds for select element "${element}".`};
+            }
+            try {
+                element.selectedIndex = index;
+                element.dispatchEvent(new Event('change', {bubbles: true}));
+                console.log(`PageManipulator: Selected option at index "${index}" in "${element}".`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error selecting option by index in "${element}": ${e.message}`};
+            }
+        },
+
+        enter: (element, data) => {
+            if (!element) {
+                return {
+                    success: false,
+                    error: `Element with selector "${selector}" not found for 'simulate_enter' action.`
+                };
+            }
+            try {
+                const event = new KeyboardEvent('keypress', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true,
+                    cancelable: true
+                });
+                element.dispatchEvent(event);
+                console.log(`PageManipulator: Simulated Enter keypress on "${element}".`);
+                return {success: true};
+            } catch (e) {
+                return {success: false, error: `Error simulating Enter on "${element}": ${e.message}`};
+            }
+        },
+
+        focusElement: (element, data) => {
+            if (!element) {
+                return {success: false, error: `Element with selector "${element}" not found for 'focus' action.`};
+            }
+            if (typeof element.focus === 'function') {
+                element.focus();
+                console.log(`PageManipulator: Focused on element "${element}".`);
+                return {success: true};
+            } else {
+                return {success: false, error: `Element "${element}" cannot be focused.`};
+            }
+        },
+
+        submitForm: (element, data) => {
+            let formElement = null;
+
+            if (element.tagName === 'FORM') {
+                formElement = element;
+            } else if (element.form) { // If it's an input/button inside a form
+                formElement = element.form;
+            }
+
+            if (!formElement) {
+                return {success: false, error: `No form found to submit for selector "${element}".`};
+            }
+
+            try {
+                // Dispatch a submit event. The HTML's onsubmit handler should prevent default.
+                const submitEvent = new Event('submit', {bubbles: true, cancelable: true});
+                const defaultPrevented = !formElement.dispatchEvent(submitEvent);
+
+                if (defaultPrevented) {
+                    console.log(`PageManipulator: Form submit event dispatched and default prevented for selector "${element}".`);
+                    return {success: true};
+                } else {
+                    // If the default was not prevented, it means the form might actually submit.
+                    console.warn(`PageManipulator: Form submit event for "${element}" was not prevented by handler. Actual submission may occur.`);
+                    return {success: true};
+                }
+            } catch (e) {
+                return {
+                    success: false,
+                    error: `Error dispatching submit event for selector "${element}": ${e.message}`
+                };
+            }
+        },
+
+        async executePlan(plan, parameters){
+            window.debug.message("Executing Plan: " + JSON.stringify(plan) + " with parameters: " + JSON.stringify(parameters))
+            const individualActionResults = [];
+            let overallStatus = "completed"; // Assume success unless an action fails
+
+            try {
+                if (!Array.isArray(plan)) {
+                    console.error("PageManipulator: executePlan received a non-array plan:", plan);
+                    return {
+                        status: "failed",
+                        results: [{success: false, error: "Invalid plan: not an array."}]
+                    };
+                }
+                const params = new parameterManager(parameters);
+
+                for (const step of plan) {
+                    let actionResult = {success: true, error: ''}; // Initialize as success for each action
+
+                    console.log("PageManipulator: Executing action:" + JSON.stringify(step));
+
+                    const action = this[step.action];
+                    const element = await this.findElement(step.selector)
+                    const data = await params.get(step.data)
+
+                    window.debug.message("Going to execute: " + action + " on: " + element +" with data: " + data);
+
+                    actionResult = action(element, data);
+
+                    window.debug.message("Step: action: " + action + ", element: " + step.selector + ", data: " + data + ", result: " + actionResult);
+
+                    individualActionResults.push({
+                        action: step.action,
+                        selector: step.selector,
+                        value: step.data,
+                        success: actionResult.success,
+                        error: actionResult.error
+                    });
+
+                    if (!actionResult.success) {
+                        overallStatus = "failed"; // If any action fails, the whole plan fails
+                        window.debug.message("Failed plan step: " + JSON.stringify(individualActionResults.at(-1)));
+                    }
+
+                    // Add a small delay between actions to allow page to react
+                    if (action.delay && typeof action.delay === 'number') {
+                        await new Promise(resolve => setTimeout(resolve, action.delay));
+                    } else {
+                        await new Promise(resolve => setTimeout(resolve, 50)); // Default small delay
+                    }
+                }
+                console.log("PageManipulator: Plan execution finished. Overall status:", overallStatus, "Results:", individualActionResults);
+                return {
+                    status: overallStatus,
+                    results: individualActionResults
+                };
+            } catch (topLevelError) {
+                console.error("PageManipulator: Top-level error during plan execution:", topLevelError);
+                return {
+                    status: "failed",
+                    results: individualActionResults.length > 0 ? individualActionResults : [{
+                        success: false,
+                        error: `Top-level execution error: ${topLevelError.message}`
+                    }]
+                };
+            }
+        },
     }
 
     // Expose functions to the global window object
-    window.pageManipulatorModule = {
-        executePlan,
-    };
+    window.pageManipulatorModule = pageManipulator;
 
     console.log("Page Manipulator module loaded.");
 

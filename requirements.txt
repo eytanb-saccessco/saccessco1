@@ -25,3 +25,4 @@ daphne
 google-genai
 protobuf~=6.31.0
 asgiref~=3.8.1
+jsonschema

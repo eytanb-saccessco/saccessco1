@@ -63,15 +63,8 @@ class Conversation:
         def _inner():
             current_thread_name = threading.current_thread().name
             logger.info(f"[{current_thread_name}] Processing user prompt for conversation {self.id}")
-            # --- DEBUGGING ID PRINTS (Keep these if they are useful for your own debugging) ---
-            print(f"DEBUG _inner thread: self.ai_engine ID: {id(self.ai_engine)}")
-            print(f"DEBUG _inner thread: self.ai_engine.respond ID: {id(self.ai_engine.respond)}")
-            # --- END DEBUGGING ID PRINTS ---
             try:
                 ai_response = self.ai_engine.respond(User, prompt)
-                # --- DEBUGGING CONFIRMATION ---
-                print(f"DEBUG _inner thread: self.ai_engine.respond was called within thread.")
-                # --- END DEBUGGING CONFIRMATION ---
                 self.ai_engine.add_message_to_history(Model, ai_response)
 
                 # IMPORTANT: Safely parse JSON

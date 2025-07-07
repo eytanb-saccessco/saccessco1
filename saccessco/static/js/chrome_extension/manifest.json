@@ -19,7 +19,7 @@
         "content.js",
         "backend_communicator.js",
         "page_change_observer.js",
-        "dom_manipulator.js",
+        "page_manipulator.js",
         "websocket.js"
       ],
       "css": ["styles.css"],

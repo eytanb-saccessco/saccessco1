@@ -4,6 +4,8 @@ import json # Ensure json is imported
 from channels.generic.websocket import AsyncWebsocketConsumer
 import logging
 
+from saccessco.validators import validate_ai_response
+
 logger = logging.getLogger('saccessco')
 
 class AiConsumer(AsyncWebsocketConsumer):
@@ -53,7 +55,7 @@ class AiConsumer(AsyncWebsocketConsumer):
             # Fallback for unhandled message types directly from WebSocket
 
     async def disconnect(self, close_code):
-        print(f"WebSocket disconnected for conversation ID: {self.conversation_id} from group: {self.group_name} with code {close_code}")
+        logger.info(f"WebSocket disconnected for conversation ID: {self.conversation_id} from group: {self.group_name} with code {close_code}")
         # Leave group
         await self.channel_layer.group_discard(
             self.group_name,
@@ -61,6 +63,7 @@ class AiConsumer(AsyncWebsocketConsumer):
         )
 
     async def ai_response(self, event):
-        ai_response_data = event['ai_response']
-        print(f"--- AiConsumer: Sending AI response to client: {ai_response_data} ---")
-        await self.send(text_data=json.dumps(ai_response_data))
+        ai_response_data = event
+        if validate_ai_response(ai_response_data):
+            logger.info(f"--- AiConsumer: Sending AI response to client: {ai_response_data} ---")
+            await self.send(text_data=json.dumps(ai_response_data))

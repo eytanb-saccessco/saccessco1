@@ -4,6 +4,7 @@ import os
 from django.conf import settings  # Assuming you still need Django settings for something
 import copy
 from typing import List, Dict, Any
+import logging
 
 # Assuming saccessco.ai.instructions and saccessco.utils.singleton exist
 from saccessco.ai.instructions import SYSTEM_INSTRUCTIONS
@@ -11,7 +12,7 @@ from saccessco.utils.singleton import Singleton  # Keep your Singleton if you ne
 
 load_dotenv()
 
-
+logger = logging.getLogger("saccessco")
 class Role:
     def __init__(self, name):
         self.name = name
@@ -87,6 +88,8 @@ class AIEngine:
             )
 
             ai_response_text = response.text
+
+            logger.info(f"AI Response: {ai_response_text}")
 
             return ai_response_text
         except Exception as e:

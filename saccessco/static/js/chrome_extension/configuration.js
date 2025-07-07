@@ -3,7 +3,7 @@ const SACCESSCO_USER_PROMPT_URL = "http://localhost:8000/saccessco/user_prompt/"
 const SACCESSCO_PAGE_CHANGE_URL = "http://localhost:8000/saccessco/page_change/";
 const TEST_PAGE_URL = "http://localhost:8000/test-page/";
 
-const DEBUG = true;
+const DEBUG = false;
 const LANGUAGE = "en-US";
 const ROLE = {
     User: "user",
