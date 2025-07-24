@@ -43,6 +43,7 @@ For each distinct function or complex usage scenario identified on the page (fro
         * ** 1. aria-label
         * ** 1.1 When creating a selector for selecting a date in date picker control:
         * ** 1.1.1 use this pattern for the CSS aria-label prefix selector: "[aria-label^='<Day of the week>, <Day of month> <Month name> <Year>']"
+        * ** 1.1.2 Make sure that <Day of month> has no leading zeroes
         * ** 2. any attribute containing 'testid',
         * ** 3. non-obfuscated id,
         * ** 4. non-obfuscated class names
