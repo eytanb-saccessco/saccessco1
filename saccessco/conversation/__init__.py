@@ -7,6 +7,8 @@ from asgiref.sync import async_to_sync
 import threading  # For logging thread info
 
 from saccessco.consumers import AiConsumer
+from saccessco.conversation.ai_response_tests import TESTS
+from saccessco.conversation.ai_response_tests.utils import parse_test_prompt
 
 logger = logging.getLogger("saccessco")
 
@@ -60,6 +62,18 @@ class Conversation:
         self.executor.submit(_inner)
 
     def user_prompt(self, prompt) -> Future:
+        def _run_test():
+            logger.info(f"--DEBUG-- Existing tests: {TESTS}")
+            logger.info(f"--DEBUG-- Looking for test: {prompt}")
+            test_name, kwargs = parse_test_prompt(prompt)
+            test = TESTS.get(test_name)
+            if test is None:
+                logger.info(f"--DEBUG-- No test: {test_name}")
+                _send({"execute": {"plan":[], "parameters":{}}, "speak": f"Test not found: {prompt}"}, "test_thread")
+            else:
+                logger.info(f"--DEBUG-- Test: {test_name} Found!!!")
+                _send(test.get_test_response(**kwargs), "test_thread")
+
         def _inner():
             current_thread_name = threading.current_thread().name
             logger.info(f"[{current_thread_name}] Processing user prompt for conversation {self.id}")
@@ -81,27 +95,32 @@ class Conversation:
                                           "raw_ai_response": ai_response[:100]}
 
                 # --- CRUCIAL LOGIC FOR SENDING VIA CHANNEL LAYER ---
-                if self.channel_layer:
-                    conversation_group_name = f"{AiConsumer.GROUP_NAME_PREFIX}{self.id}"
-
-                    # This is the line that was missing before!
-                    async_to_sync(self.channel_layer.group_send)(
-                        conversation_group_name,
-                        {
-                            'type': 'ai_response',
-                            'ai_response': ai_response_object,
-                        }
-                    )
-                    logger.info(
-                        f"[{current_thread_name}] Sent structured AI response to group '{conversation_group_name}'.")
-                else:
-                    logger.error(f"[{current_thread_name}] Channel layer was not available to send AI response.")
+                _send(ai_response_object, current_thread_name)
                 # --- END CRUCIAL LOGIC ---
 
             except Exception as e:
                 logger.error(f"[{current_thread_name}] Error during user prompt processing: {e}", exc_info=True)
 
-        return self.executor.submit(_inner)
+        def _send(ai_response_object, current_thread_name):
+            if self.channel_layer:
+                conversation_group_name = f"{AiConsumer.GROUP_NAME_PREFIX}{self.id}"
+
+                # This is the line that was missing before!
+                async_to_sync(self.channel_layer.group_send)(
+                    conversation_group_name,
+                    {
+                        'type': 'ai_response',
+                        'ai_response': ai_response_object,
+                    }
+                )
+                logger.info(
+                    f"[{current_thread_name}] Sent structured AI response to group '{conversation_group_name}'.")
+            else:
+                logger.error(f"[{current_thread_name}] Channel layer was not available to send AI response.")
+        if prompt.startswith("Test") or prompt.startswith("test"):
+            _run_test()
+        else:
+            return self.executor.submit(_inner)
 
     def shutdown(self):
         logger.info(f"Shutting down ThreadPoolExecutor for Conversation ID: {self.id}")

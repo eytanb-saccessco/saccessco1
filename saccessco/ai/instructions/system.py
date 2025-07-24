@@ -1,4 +1,5 @@
 from saccessco.ai.instructions.page import PAGE_INSTRUCTIONS
+# from saccessco.ai.instructions.skyscanner import INSTRUCTIONS as SKYSCANNER_INSTRUCTIONS
 
 SYSTEM_INSTRUCTIONS = (
     "# Identity\n\n"

@@ -120,18 +120,19 @@
     const pageManipulator = {
 
         /**
-         * Finds an HTML element using a CSS selector and waits until it is visible,
-         * or a timeout occurs.
+         * Finds an HTML element using a CSS selector, scrolls it into view,
+         * and waits until it is visible and interactive, or a timeout occurs.
+         * This is an internal helper function.
          *
          * @param {string} selector - The CSS selector for the element.
-         * @param {number} [timeoutMs=5000] - Maximum time to wait for the element to be visible in milliseconds.
+         * @param {number} [timeoutMs=10000] - Maximum time to wait for the element to be visible in milliseconds.
          * @param {number} [checkIntervalMs=100] - How often to check for the element's visibility in milliseconds.
          * @returns {Promise<HTMLElement|null>} A Promise that resolves with the found and visible element,
          * or `null` if the timeout is reached or the selector is invalid.
          */
-        findElement: async (selector, timeoutMs = 5000, checkIntervalMs = 100) => {
+        _findElementAndAssertVisible: async (selector, timeoutMs = 10000, checkIntervalMs = 100) => {
             if (!selector || typeof selector !== 'string') {
-                console.error("PageManipulator: findElement called with invalid or null selector.");
+                console.error("PageManipulator: _findElementAndAssertVisible called with invalid or null selector.");
                 if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
                     window.chatModule.addMessage("Saccessco", `Error finding element: Invalid selector provided.`);
                 }
@@ -141,22 +142,28 @@
             const startTime = Date.now();
 
             return new Promise(resolve => {
-                const intervalId = setInterval(() => {
+                const intervalId = setInterval(async () => { // Made async to await scrollIntoView and setTimeout
                     const element = document.querySelector(selector);
 
                     if (element) {
+                        // Scroll the element into view first
+                        // Using 'center' block for better visibility, 'nearest' for inline
+                        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+                        // Add a small delay to allow the scroll to complete and render
+                        await new Promise(r => setTimeout(r, 100)); // Wait 100ms after scrolling
+
                         // Check for visibility
                         const style = window.getComputedStyle(element);
-                        const isVisible = style.display !== 'none' &&
+                        const isVisible = element.offsetWidth > 0 &&
+                                          element.offsetHeight > 0 &&
+                                          style.display !== 'none' &&
                                           style.visibility !== 'hidden' &&
-                                          style.opacity !== '0' &&
-                                          element.offsetWidth > 0 &&
-                                          element.offsetHeight > 0;
+                                          parseFloat(style.opacity) > 0;
 
                         if (isVisible) {
                             clearInterval(intervalId);
                             const duration = Date.now() - startTime;
-                            console.log(`PageManipulator: findElement found and element "${selector}" visible in ${duration}ms.`);
+                            console.log(`PageManipulator: _findElementAndAssertVisible found and element "${selector}" visible in ${duration}ms.`);
                             window.debug.message(`Element "${selector}" found and visible in ${duration}ms.`);
                             resolve(element);
                             return;
@@ -165,7 +172,7 @@
 
                     if (Date.now() - startTime >= timeoutMs) {
                         clearInterval(intervalId);
-                        const errorMsg = `PageManipulator: findElement timed out waiting for element "${selector}" to be visible after ${timeoutMs}ms.`;
+                        const errorMsg = `PageManipulator: _findElementAndAssertVisible timed out waiting for element "${selector}" to be visible after ${timeoutMs}ms.`;
                         console.warn(errorMsg);
                         if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
                             window.chatModule.addMessage("Saccessco", `Element not found or visible: ${selector}.`);
@@ -175,7 +182,33 @@
                 }, checkIntervalMs);
             });
         },
-        getElement: this.findElement,
+
+        // Public action methods
+
+        /**
+         * Waits for a given DOM element (identified by selector) to become visible and interactive,
+         * or until a timeout occurs. This function is designed to be used as an action in the plan.
+         *
+         * @param {string} selector - The CSS selector for the element to wait for.
+         * @param {null} data - This parameter is always null for this action.
+         * @returns {Promise<{success: boolean, error?: string}>} A Promise that resolves with a success status,
+         * or rejects if the timeout is reached.
+         */
+        waitForElement: async (selector, data) => {
+            try {
+                // This function already uses _findElementAndAssertVisible internally,
+                // which now includes scrolling.
+                const element = await pageManipulator._findElementAndAssertVisible(selector);
+                if (element) {
+                    console.log(`PageManipulator: Successfully waited for element "${selector}".`);
+                    return { success: true };
+                } else {
+                    return { success: false, error: `waitForElement: Element "${selector}" not found or visible after timeout.` };
+                }
+            } catch (e) {
+                return { success: false, error: `waitForElement: Error during wait for element "${selector}": ${e.message}` };
+            }
+        },
 
         typeInto: (element, data) => {
             if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
@@ -213,7 +246,9 @@
 
         scrollTo: (element, data) => {
             try {
-                element.scrollIntoView(true);
+                // This action explicitly scrolls to an element.
+                // The _findElementAndAssertVisible already ensures elements are in view for other actions.
+                element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
                 console.log(`PageManipulator: Scrolled to element "${element}"`);
                 return {success: true};
             } catch (e) {
@@ -223,7 +258,7 @@
 
         checkCheckbox: (element, data = true) => {
             if (!element || element.type !== 'checkbox') {
-                return {success: false, error: `Element "${selector}" is not a checkbox or not found.`};
+                return {success: false, error: `Element is not a checkbox or not found.`};
             }
             try {
                 element.checked = data;
@@ -237,7 +272,7 @@
 
         checkRadioButton: (element, data = true) => {
             if (!element || element.type !== 'radio') {
-                return {success: false, error: `Element "${selector}" is not a radio button or not found.`};
+                return {success: false, error: `Element is not a radio button or not found.`};
             }
             try {
                 element.checked = data;
@@ -256,7 +291,7 @@
             try {
                 element.value = data;
                 element.dispatchEvent(new Event('change', {bubbles: true}));
-                console.log(`PageManipulator: Selected option with value "${value}" in "${element}".`);
+                console.log(`PageManipulator: Selected option with value "${data}" in "${element}".`);
                 return {success: true};
             } catch (e) {
                 return {success: false, error: `Error selecting option by value in "${element}": ${e.message}`};
@@ -268,8 +303,8 @@
                 return {success: false, error: `Element "${element}" is not a select element or not found.`};
             }
             const index = parseInt(data);
-            if (index < 0 || index >= element.options.length) {
-                return {success: false, error: `Index "${index}" out of bounds for select element "${element}".`};
+            if (isNaN(index) || index < 0 || index >= element.options.length) {
+                return {success: false, error: `Index "${data}" is invalid or out of bounds for select element "${element}".`};
             }
             try {
                 element.selectedIndex = index;
@@ -285,7 +320,7 @@
             if (!element) {
                 return {
                     success: false,
-                    error: `Element with selector "${selector}" not found for 'simulate_enter' action.`
+                    error: `Element not found for 'enter' action.`
                 };
             }
             try {
@@ -307,7 +342,7 @@
 
         focusElement: (element, data) => {
             if (!element) {
-                return {success: false, error: `Element with selector "${element}" not found for 'focus' action.`};
+                return {success: false, error: `Element not found for 'focusElement' action.`};
             }
             if (typeof element.focus === 'function') {
                 element.focus();
@@ -323,31 +358,29 @@
 
             if (element.tagName === 'FORM') {
                 formElement = element;
-            } else if (element.form) { // If it's an input/button inside a form
+            } else if (element.form) {
                 formElement = element.form;
             }
 
             if (!formElement) {
-                return {success: false, error: `No form found to submit for selector "${element}".`};
+                return {success: false, error: `No form found to submit for element "${element}".`};
             }
 
             try {
-                // Dispatch a submit event. The HTML's onsubmit handler should prevent default.
                 const submitEvent = new Event('submit', {bubbles: true, cancelable: true});
                 const defaultPrevented = !formElement.dispatchEvent(submitEvent);
 
                 if (defaultPrevented) {
-                    console.log(`PageManipulator: Form submit event dispatched and default prevented for selector "${element}".`);
+                    console.log(`PageManipulator: Form submit event dispatched and default prevented for form "${formElement}".`);
                     return {success: true};
                 } else {
-                    // If the default was not prevented, it means the form might actually submit.
-                    console.warn(`PageManipulator: Form submit event for "${element}" was not prevented by handler. Actual submission may occur.`);
+                    console.warn(`PageManipulator: Form submit event for "${formElement}" was not prevented by handler. Actual submission may occur.`);
                     return {success: true};
                 }
             } catch (e) {
                 return {
                     success: false,
-                    error: `Error dispatching submit event for selector "${element}": ${e.message}`
+                    error: `Error dispatching submit event for form "${formElement}": ${e.message}`
                 };
             }
         },
@@ -355,7 +388,7 @@
         async executePlan(plan, parameters){
             window.debug.message("Executing Plan: " + JSON.stringify(plan) + " with parameters: " + JSON.stringify(parameters))
             const individualActionResults = [];
-            let overallStatus = "completed"; // Assume success unless an action fails
+            let overallStatus = "completed";
 
             try {
                 if (!Array.isArray(plan)) {
@@ -368,38 +401,53 @@
                 const params = new parameterManager(parameters);
 
                 for (const step of plan) {
-                    let actionResult = {success: true, error: ''}; // Initialize as success for each action
+                    let actionResult = {success: true, error: ''};
+                    let element = null;
+                    let data = null;
 
-                    console.log("PageManipulator: Executing action:" + JSON.stringify(step));
+                    console.log("PageManipulator: Executing action:", step.action, "on selector:", step.selector);
 
-                    const action = this[step.action];
-                    const element = await this.findElement(step.selector)
-                    const data = await params.get(step.data)
+                    // For 'waitForElement' action, we only need to wait for the element
+                    // The _findElementAndAssertVisible function now includes scrolling and waiting.
+                    // So, for all actions, we first call _findElementAndAssertVisible.
+                    element = await this._findElementAndAssertVisible(step.selector);
+                    if (!element) {
+                        actionResult = { success: false, error: `Element "${step.selector}" not found or visible after timeout for action "${step.action}".` };
+                    } else {
+                        // Only get data if it's needed for the action
+                        if (step.data !== null && step.data !== undefined) {
+                            data = await params.get(step.data);
+                        }
 
-                    window.debug.message("Going to execute: " + action + " on: " + element +" with data: " + data);
+                        const actionFunction = this[step.action];
+                        if (typeof actionFunction === 'function') {
+                            window.debug.message("Going to execute: " + step.action + " on: " + step.selector +" with data: " + data);
+                            // Pass the found element directly to the action function
+                            actionResult = actionFunction(element, data);
+                        } else {
+                            actionResult = { success: false, error: `Unknown action: ${step.action}` };
+                        }
+                    }
 
-                    actionResult = action(element, data);
-
-                    window.debug.message("Step: action: " + action + ", element: " + step.selector + ", data: " + data + ", result: " + actionResult);
+                    window.debug.message("Step: action: " + step.action + ", selector: " + step.selector + ", data: " + data + ", result: " + JSON.stringify(actionResult));
 
                     individualActionResults.push({
                         action: step.action,
                         selector: step.selector,
-                        value: step.data,
+                        value: data,
                         success: actionResult.success,
                         error: actionResult.error
                     });
 
                     if (!actionResult.success) {
-                        overallStatus = "failed"; // If any action fails, the whole plan fails
+                        overallStatus = "failed";
                         window.debug.message("Failed plan step: " + JSON.stringify(individualActionResults.at(-1)));
+                        break;
                     }
 
                     // Add a small delay between actions to allow page to react
-                    if (action.delay && typeof action.delay === 'number') {
-                        await new Promise(resolve => setTimeout(resolve, action.delay));
-                    } else {
-                        await new Promise(resolve => setTimeout(resolve, 50)); // Default small delay
+                    if (actionResult.success) {
+                        await new Promise(resolve => setTimeout(resolve, 50));
                     }
                 }
                 console.log("PageManipulator: Plan execution finished. Overall status:", overallStatus, "Results:", individualActionResults);

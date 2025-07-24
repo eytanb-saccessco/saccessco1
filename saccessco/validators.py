@@ -43,7 +43,7 @@ ai_response_schema = {
                     "type": "string",
                     "description": "The type of action to perform on the selected element.",
                     "enum": ["typeInto", "click", "scrollTo", "checkCheckbox", "checkRadioButton",
-                             "selectOptionByValue", "selectOptionByIndex", "enter", "focusElement", "submitForm"]
+                             "selectOptionByValue", "selectOptionByIndex", "enter", "focusElement", "submitForm", "waitForElement"]
 
                   },
                   "data": {

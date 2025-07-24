@@ -1,28 +1,3 @@
-# from saccessco.ai.instructions.dom_element_actions import DOM_ELEMENT_ACTIONS
-#
-# PAGE_INSTRUCTIONS = (
-#     "# Page Change Instructions\n\n"
-#     "* When receiving a page change html\n"
-#     "** ensure to:\n"
-#     "1. Prioritize core, universal functionalities: Search, navigation, login/logout, primary content consumption (like playing a video), and content creation (uploading) will be explicitly looked for.\n"
-#     "2. Thoroughly analyze interactive elements: I will pay closer attention to common input fields, buttons, and links that suggest primary user actions.\n"
-#     "3. Cross-reference with common web patterns: I will use my knowledge of typical website layouts and functionalities to ensure no obvious user interaction is missed.\n"
-#     "Please create:\n"
-#     "1. Description for all different functions a user can use the page for.\n"
-#     "2. For each function available to end user of the page:\n"
-#     "2.1 Create a dom manipulation plan consisted of:\n"
-#     "2.2.1 A list of manipulation steps. Each step should be a json object with the following keys:\n"
-#     "2.2.2.2 'action' - with a value - the name of one of the DOM Element Actions described in:\n"
-#     f"\t{DOM_ELEMENT_ACTIONS}\n"
-#     "2.2.2.3 'selector' - A CSS selector for an interactive element visible on the page\n"
-#     "2.2.2.4 'data' - A name for a parameter to be used in the action, if needed otherwise null.\n "
-#     "Produce a response with:\n"
-#     "1. A list of all functions available for end user interacting with the current page.\n"
-#     "1.1 For each function add a description that can be used to explain the function to an end user\n"
-#     "1.2 For each function add the dom manipulation plan\n"
-#     "The response will be added to the conversation history. To be used by you when responding to USER PRMPT\n"
-# )
-
 PAGE_INSTRUCTIONS = """
 # Page Analysis and Automation Plan Request
 
@@ -64,17 +39,19 @@ For each distinct function or complex usage scenario identified on the page (fro
         ```
         * **`action`**: The name of one of the **Available DOM Element Actions** listed below.
         * **`selector`**: A CSS selector string that precisely targets the interactive element visible on the page.
-        * ** The selector should be based on: 
-        * ** 1. aria-label, 
-        * ** 2. any attribute containing 'testid', 
-        * ** 3. non-obfuscated id, 
+        * ** The selector should be based on:
+        * ** 1. aria-label
+        * ** 1.1 When creating a selector for selecting a date in date picker control:
+        * ** 1.1.1 use this pattern for the CSS aria-label prefix selector: "[aria-label^='<Day of the week>, <Day of month> <Month name> <Year>']"
+        * ** 2. any attribute containing 'testid',
+        * ** 3. non-obfuscated id,
         * ** 4. non-obfuscated class names
-        * **
         * **`data`**:
             * If the action requires a dynamic value (e.g., text to type, a value to select), this should be a **string representing the name of a parameter** that will be provided at execution time (e.g., `"username"`, `"search_query"`).
             * If the action does not require dynamic data (e.g., a simple click, scrolling), this should be `null`.
 
-    * **`parameters`**: A JSON object containing key-value pairs. Each key *must* correspond to a `data` parameter name used in the `plan`. The value should be a **placeholder string or example value** that clearly indicates what kind of data is expected for that parameter (e.g., `"your_username_here"`, `"Bohemian Rhapsody by Queen"`).
+    * **`parameters`**: A JSON object containing key-value pairs. Each key *must* correspond to a `data` parameter name used in the `plan`. The Value should be a **placeholder string or example value** that clearly indicates what kind of data is expected for that parameter (e.g., `"your_username_here"`, `"Bohemian Rhapsody by Queen"`).
+    * ** **Mandatory First Step for Date Pickers:** If the plan involves selecting a departure date, the **first step in the plan MUST be a `click` action on the departure date button**, using the selector `[data-testid='depart-btn']`. If the plan involves selecting a return date, the **first step in the plan MUST be a `click` action on the return date button**, using the selector `[data-testid='return-btn']`. This ensures the correct date picker is open before any subsequent date-related actions.
 
 **Available DOM Element Actions (and their usage in `plan` steps):**
 
@@ -117,6 +94,10 @@ For each distinct function or complex usage scenario identified on the page (fro
 10. **`submitForm`**:
     * **Purpose:** Dispatches a submit event on a form, or on a button/input within a form.
     * **Usage:** `{"action": "submitForm", "selector": "#myForm", "data": null}`
+
+11. **`waitForElement`**:
+    * **Purpose:** Pauses execution until a specified element is visible and interactive. This is crucial for dynamically loaded content.
+    * **Usage:** `{"action": "waitForElement", "selector": "#myDynamicElement", "data": null}`
 
 **Complex Usage Scenarios to Automate (if applicable to the page):**
 
