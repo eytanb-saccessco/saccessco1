@@ -1,7 +1,8 @@
 import json
 from concurrent.futures import ThreadPoolExecutor, Future
 from channels.layers import get_channel_layer
-from saccessco.ai import AIEngine, User, Model  # Assuming these are correctly defined
+from saccessco.ai import GeminiAIEngine as AIEngine, User, Model  # Assuming these are correctly defined
+# from saccessco.ai import ChtgptAIEngine as AIEngine, User, Model  # Assuming these are correctly defined
 import logging
 from asgiref.sync import async_to_sync
 import threading  # For logging thread info

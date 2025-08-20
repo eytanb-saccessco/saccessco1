@@ -3,9 +3,9 @@ speechrecognition
 pyttsx3
 google-cloud-texttospeech
 simpleaudio
-openai==0.28
+openai==1.99.1
 pyaudio
-python-dotenv~=1.1.0
+python-dotenv==1.1.1
 selenium~=4.32.0
 googlesearch-python
 django~=5.2.1

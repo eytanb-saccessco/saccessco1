@@ -40,12 +40,15 @@ For each distinct function or complex usage scenario identified on the page (fro
         * **`action`**: The name of one of the **Available DOM Element Actions** listed below.
         * **`selector`**: A CSS selector string that precisely targets the interactive element visible on the page.
         * ** The selector should be based on:
-        * ** 1. aria-label
-        * ** 1.1 When creating a selector for selecting a date in date picker control:
-        * ** 1.1.1 use this pattern for the CSS aria-label prefix selector: "[aria-label^='<Day of the week>, <Day of month> <Month name> <Year>']"
-        * ** 2. any attribute containing 'testid',
-        * ** 3. non-obfuscated id,
+        * ** 1. non-obfuscated id,
+        * ** 2. aria-label
+        * ** 2.1 When creating a selector for selecting a date in date picker control:
+        * ** 2.1.1 use this pattern exactly for the CSS aria-label: "[aria-label*='<Month name> <Day of month>, <Year>']"
+        * ** 2.1.2 Make sure that <Day of month> has no leading zeroes
+        * ** 3. any attribute containing 'testid' that the element has,
         * ** 4. non-obfuscated class names
+        * ** 5. when selecting an option in a dropdown, and the user provided info about the desired option, 
+        * ** 5.1 use a css selector of the form: '[value*="<user input>"]'
         * **`data`**:
             * If the action requires a dynamic value (e.g., text to type, a value to select), this should be a **string representing the name of a parameter** that will be provided at execution time (e.g., `"username"`, `"search_query"`).
             * If the action does not require dynamic data (e.g., a simple click, scrolling), this should be `null`.

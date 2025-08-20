@@ -21,4 +21,6 @@ SYSTEM_INSTRUCTIONS = (
     "* If the page html changes, or the browser is directed to a new page/url,\n"
     "** You should try to continue your help based on the new HTMl content and the latest user intent.\n"
     "* In cases you want to explain your reasoning, Please put the explanation in the 'speak' part of a json response\n"
+    "* All dates you suggest should be from today forward\n"
+    "* Yo should always respond to user prompt within 20 seconds"
 )

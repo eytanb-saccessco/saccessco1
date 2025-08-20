@@ -139,6 +139,12 @@
                 return null;
             }
 
+            console.log("Checking if date selector: " + selector);
+            if(window.skyscannerDates.isDateSelector(selector)) {
+                return window.skyscannerDates.scrollToDate(selector);
+            }
+            console.log("Selector: " + selector + " Not date!");
+
             const startTime = Date.now();
 
             return new Promise(resolve => {

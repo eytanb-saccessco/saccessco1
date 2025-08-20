@@ -19,6 +19,7 @@
         "content.js",
         "backend_communicator.js",
         "page_change_observer.js",
+        "skyscanner_dates.js",
         "page_manipulator.js",
         "websocket.js"
       ],
