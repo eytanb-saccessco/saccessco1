@@ -44,11 +44,13 @@ For each distinct function or complex usage scenario identified on the page (fro
         * ** 2. aria-label
         * ** 2.1 When creating a selector for selecting a date in date picker control:
         * ** 2.1.1 use this pattern exactly for the CSS aria-label: "[aria-label*='<Month name> <Day of month>, <Year>']"
-        * ** 2.1.2 Make sure that <Day of month> has no leading zeroes
+        * ** 2.1.2 If user does not specify year, year should be current year
+        * ** 2.1.3 Make sure that <Day of month> has no leading zeroes
         * ** 3. any attribute containing 'testid' that the element has,
         * ** 4. non-obfuscated class names
         * ** 5. when selecting an option in a dropdown, and the user provided info about the desired option, 
         * ** 5.1 use a css selector of the form: '[value*="<user input>"]'
+        * ** 5.2 If an element is visible with text: "Apply" - click it after selection
         * **`data`**:
             * If the action requires a dynamic value (e.g., text to type, a value to select), this should be a **string representing the name of a parameter** that will be provided at execution time (e.g., `"username"`, `"search_query"`).
             * If the action does not require dynamic data (e.g., a simple click, scrolling), this should be `null`.
