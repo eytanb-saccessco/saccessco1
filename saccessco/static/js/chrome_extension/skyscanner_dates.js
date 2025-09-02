@@ -1,290 +1,177 @@
 /**
- * skyscanner_dates.js
+ * skyscanner_dates.js — robust date picker helper for Skyscanner
  *
- * This module provides functionality to interact with Skyscanner's custom date picker,
- * specifically to find a date element and scroll it into view by simulating navigation
- * through "Next month" or "Previous month" buttons.
+ * Exposes on window.skyscannerDates:
+ *   - scrollToDate(cssSelector, options?) => Promise<HTMLElement|null>
+ *   - isDateSelector(selector) => boolean
+ *   - ensureDateVisible(cssSelector, options?) => Promise<HTMLElement|null>
  *
- * NOTE: This version is adapted for Chrome Extension content scripts (Manifest V3)
- * which do not natively support ES Module 'export' keywords when loaded via manifest.json.
- * Functions are exposed via the 'window' object.
+ * Notes:
+ *  - Accepts selectors like: [aria-label*='December 20, 2025'] or [aria-label*="20 December 2025"]
+ *  - Will open/navigate calendar months via the native next/prev controls until the date cell appears.
  */
 
-// --- Helper Functions (Internal to this module) ---
+(function(window){
+  'use strict';
 
-/**
- * Checks if an element is visible within the viewport.
- * Accounts for display, visibility, opacity, and bounding box.
- * @param {HTMLElement} el The element to check.
- * @returns {boolean} True if the element is visible, false otherwise.
- */
-function isElementVisible(el) {
-    if (!el) {
-        return false;
-    }
-    const style = window.getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
-        return false;
-    }
+  /* ======================= Helpers ======================= */
+  function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-    const rect = el.getBoundingClientRect();
-    // Check if any part of the element is within the viewport
-    return (
-        rect.top < (window.innerHeight || document.documentElement.clientHeight) &&
-        rect.left < (window.innerWidth || document.documentElement.clientWidth) &&
-        rect.bottom > 0 &&
-        rect.right > 0
-    );
-}
+  function isElementVisible(el){
+    if(!el) return false;
+    var s = window.getComputedStyle(el);
+    if (s.display === 'none' || s.visibility === 'hidden' || +s.opacity === 0) return false;
+    var r = el.getBoundingClientRect();
+    return r.width>0 && r.height>0 && r.bottom>0 && r.right>0 && r.top < (window.innerHeight||document.documentElement.clientHeight) && r.left < (window.innerWidth||document.documentElement.clientWidth);
+  }
 
-/**
- * Scrolls an element into view smoothly.
- * @param {HTMLElement} el The element to scroll.
- */
-function scrollElementIntoView(el) {
-    if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-}
+  function scrollElementIntoView(el){ if(el) el.scrollIntoView({behavior:'smooth', block:'center'}); }
 
-/**
- * Parses an aria-label string (e.g., "July 2025" or "15 July 2025") into a Date object
- * representing the first day of that month.
- * @param {string} ariaLabelString The aria-label string.
- * @returns {Date|null} A Date object for the first day of the month, or null if parsing fails.
- */
-function getMonthYearFromAriaLabel(ariaLabelString) {
-    if (!ariaLabelString) return null;
+  function monthIndexFromName(name){
+    if(!name) return -1; var n = String(name).toLowerCase();
+    var map = { jan:0,january:0, feb:1,february:1, mar:2,march:2, apr:3,april:3, may:4, jun:5,june:5, jul:6,july:6, aug:7,august:7, sep:8,sept:8,september:8, oct:9,october:9, nov:10,november:10, dec:11,december:11 };
+    return (n in map) ? map[n] : (n.length>3 && (map[n.slice(0,3)] ?? -1));
+  }
 
-    // Try to match "Month Year" (e.g., "July 2025")
-    let match = ariaLabelString.match(/([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/i);
-    if (match) {
-        const monthName = match[1];
-        const year = parseInt(match[2], 10);
-        const monthIndex = new Date(Date.parse(monthName + " 1, " + year)).getMonth();
-        if (!isNaN(monthIndex)) {
-            return new Date(year, monthIndex, 1);
-        }
-    }
+  function normalizeTextSpaces(s){
+    return String(s||'')
+      .replace(/\u00A0|\u2007|\u202F/g, ' ')        // NBSP variants
+      .replace(/[\u200B-\u200F\u202A-\u202E]/g,'') // bidi/format marks
+      .replace(/\s+/g,' ').trim();
+  }
 
-    // Try to match "Day Month Year" (e.g., "15 July 2025")
-    match = ariaLabelString.match(/\d{1,2}\s+([A-Za-z]+)\s+(\d{4})/);
-    if (match) {
-        const monthName = match[1];
-        const year = parseInt(match[2], 10);
-        const monthIndex = new Date(Date.parse(monthName + " 1, " + year)).getMonth();
-        if (!isNaN(monthIndex)) {
-            return new Date(year, monthIndex, 1);
-        }
-    }
-
-    return null;
-}
-
-/**
- * Finds all visible month header elements in the calendar.
- * Assumes month headers have aria-labels like "Month Year".
- * @returns {HTMLElement[]} An array of visible month header elements.
- */
-function findVisibleMonthHeaders() {
-    const monthHeaders = document.querySelectorAll('[aria-label]'); // Select all elements with aria-label
-    const visibleHeaders = [];
-
-    monthHeaders.forEach(header => {
-        const ariaLabel = header.getAttribute('aria-label');
-        // Check if aria-label looks like a month header (e.g., "July 2025")
-        // and if it's visible.
-        if (ariaLabel && /\b[A-Za-z]+\s+\d{4}\b/.test(ariaLabel) && isElementVisible(header)) {
-            visibleHeaders.push(header);
-        }
+  /**
+   * Ensure selector includes a year token; if a year is present and < currentYear, bump it up.
+   */
+  function normalizeAriaLabelDateSelector(selector, minYear){
+    var s = String(selector||'');
+    var yearNow = (typeof minYear==='number') ? minYear : (new Date()).getFullYear();
+    if (!/\b\d{4}\b/.test(s)) { s = s.replace(/\]$/, "[aria-label*='"+yearNow+"']]"); }
+    s = s.replace(/aria-label\*=(["'])(.*?)\1/ig, function(_,q,val){
+      var v = String(val).replace(/\b(\d{4})\b/g, function(m,y){ var yy=+y; return (yy>=1900 && yy<yearNow)? String(yearNow) : y; });
+      return "aria-label*="+q+v+q;
     });
-    return visibleHeaders;
-}
+    return s;
+  }
 
-/**
- * Determines the earliest visible month in the calendar.
- * @returns {Date|null} A Date object representing the first day of the earliest visible month, or null.
- */
-function getEarliestVisibleCalendarMonth() {
-    const visibleHeaders = findVisibleMonthHeaders();
-    if (visibleHeaders.length === 0) {
-        return null;
-    }
-
-    // Sort headers by their month/year to find the earliest one
-    visibleHeaders.sort((a, b) => {
-        const dateA = getMonthYearFromAriaLabel(a.getAttribute('aria-label'));
-        const dateB = getMonthYearFromAriaLabel(b.getAttribute('aria-label'));
-        if (!dateA || !dateB) return 0; // Should not happen if findVisibleMonthHeaders is good
-        return dateA.getTime() - dateB.getTime();
-    });
-
-    return getMonthYearFromAriaLabel(visibleHeaders[0].getAttribute('aria-label'));
-}
-
-/**
- * Simulates a click on a given element.
- * @param {HTMLElement} el The element to click.
- */
-function simulateClick(el) {
-    if (el) {
-        el.click();
-    }
-}
-
-// --- Main Exposed Functions ---
-
-/**
- * Attempts to find and return a DOM element representing a specific date in Skyscanner's
- * date picker. If the element is not initially visible, it tries to navigate the calendar
- * by clicking "Next month" or "Previous month" buttons until the target month is visible.
- *
- * @param {string} cssSelector A CSS selector in the form: `aria-label*='<Day of month> <Month name> <Year>'`.
- * Example: `"aria-label*='30 July 2025'"` or `"aria-label*='10 October 2025.'"`
- * @returns {Promise<HTMLElement|null>} A promise that resolves with the found HTMLElement
- * if the date is found and made visible, or `null` otherwise.
- */
-async function scrollToDate(cssSelector) {
-    // 1. Initial attempt to find the exact date element
-    let targetElement = document.querySelector(cssSelector);
-
-    if (targetElement) {
-        if (isElementVisible(targetElement)) {
-            console.log(`[scrollToDate] Element for "${cssSelector}" found and is visible.`);
-            return targetElement;
-        } else {
-            console.log(`[scrollToDate] Element for "${cssSelector}" found but not visible. Attempting direct scroll...`);
-            scrollElementIntoView(targetElement);
-            await new Promise(resolve => setTimeout(resolve, 500)); // Give a small moment for the scroll to complete
-            if (isElementVisible(targetElement)) {
-                console.log(`[scrollToDate] Element for "${cssSelector}" is now visible after direct scroll.`);
-                return targetElement;
-            } else {
-                console.warn(`[scrollToDate] Element for "${cssSelector}" not visible even after direct scroll.`);
-            }
-        }
-    }
-
-    console.log(`[scrollToDate] Element for "${cssSelector}" not found or not initially visible. Attempting calendar navigation...`);
-
-    // Extract the target month and year from the selector
-    const match = cssSelector.match(/aria-label\*=["']([A-Za-z]+)\s+\d{1,2},\s+\d{4}["']\]?$/i);
-    let targetMonthString = null;
-    if (match && match[1]) {
-        targetMonthString = match[1]; // e.g., "July 302025"
-    }
-
-    const targetMonthDate = getMonthYearFromAriaLabel(targetMonthString);
-
-    if (!targetMonthDate) {
-        console.error(`[scrollToDate] Could not extract valid month/year from selector: "${cssSelector}".`);
-        return null;
-    }
-
-    let attempts = 0;
-    const maxNavigationAttempts = 24; // Max attempts (e.g., 2 years worth of months)
-
-    while (attempts < maxNavigationAttempts) {
-        const currentCalendarMonthDate = getEarliestVisibleCalendarMonth();
-
-        if (!currentCalendarMonthDate) {
-            console.warn(`[scrollToDate] No visible month headers found. Calendar might not be open or loaded.`);
-            break; // Exit if no calendar is detected
-        }
-
-        // Check if the target month is now visible
-        const targetMonthHeaderSelector = `[aria-label*='${targetMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' })}']`;
-        const targetMonthHeader = document.querySelector(targetMonthHeaderSelector);
-
-        if (targetMonthHeader && isElementVisible(targetMonthHeader)) {
-            console.log(`[scrollToDate] Target month "${targetMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' })}" is now visible.`);
-            break; // Target month is visible, exit navigation loop
-        }
-
-        let navigationButton = null;
-        if (targetMonthDate.getTime() > currentCalendarMonthDate.getTime()) {
-            // Target month is in the future, click "Next month"
-            navigationButton = document.querySelector("[aria-label*='Next month']");
-            if (navigationButton && isElementVisible(navigationButton)) {
-                console.log(`[scrollToDate] Clicking "Next month" button.`);
-                simulateClick(navigationButton);
-            } else {
-                console.warn(`[scrollToDate] "Next month" button not found or not visible. Cannot navigate forward.`);
-                break; // Cannot navigate, exit loop
-            }
-        } else if (targetMonthDate.getTime() < currentCalendarMonthDate.getTime()) {
-            // Target month is in the past, click "Previous month"
-            navigationButton = document.querySelector("[aria-label*='Previous month']");
-            if (navigationButton && isElementVisible(navigationButton)) {
-                console.log(`[scrollToDate] Clicking "Previous month" button.`);
-                simulateClick(navigationButton);
-            } else {
-                console.warn(`[scrollToDate] "Previous month" button not found or not visible. Cannot navigate backward.`);
-                break; // Cannot navigate, exit loop
-            }
-        } else {
-            // This case means currentCalendarMonthDate is the targetMonthDate, but the header wasn't found visible.
-            // This could happen if the header is just slightly out of view or has a different aria-label format.
-            // We'll try a direct scroll as a fallback here before giving up.
-            console.warn(`[scrollToDate] Current calendar month matches target, but header not directly visible. Attempting direct scroll.`);
-            const potentialHeader = document.querySelector(targetMonthHeaderSelector);
-            if (potentialHeader) {
-                scrollElementIntoView(potentialHeader);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                if (isElementVisible(potentialHeader)) {
-                    console.log(`[scrollToDate] Target month header made visible via direct scroll.`);
-                    break;
-                }
-            }
-            console.warn(`[scrollToDate] Could not confirm target month visibility after matching. Exiting navigation.`);
-            break; // Exit loop if no navigation needed or possible
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 700)); // Wait for calendar animation/load after click
-        attempts++;
-    }
-
-    // After navigation, re-attempt to find the exact date element
-    targetElement = document.querySelector(cssSelector);
-    if (targetElement) {
-        if (isElementVisible(targetElement)) {
-            console.log(`[scrollToDate] Original element for "${cssSelector}" found and is now visible after navigation.`);
-            return targetElement;
-        } else {
-            console.log(`[scrollToDate] Original element for "${cssSelector}" found, but still not fully visible. Scrolling directly.`);
-            scrollElementIntoView(targetElement);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            if (isElementVisible(targetElement)) {
-                console.log(`[scrollToDate] Original element for "${cssSelector}" is now visible after final direct scroll.`);
-                return targetElement;
-            } else {
-                console.warn(`[scrollToDate] Original element for "${cssSelector}" still not visible after all attempts.`);
-            }
-        }
-    } else {
-        console.warn(`[scrollToDate] Original element for "${cssSelector}" still not found after calendar navigation.`);
-    }
-
-    console.warn(`[scrollToDate] Failed to find or make visible the element for "${cssSelector}".`);
-    console.log("Tip: Ensure the Skyscanner date picker is open/active before calling this function.");
+  /**
+   * Parse any of:
+   *   - "December 20, 2025"
+   *   - "20 December 2025"
+   *   - or a FULL selector string containing aria-label* tokens (we'll join them)
+   * Returns new Date(year, monthIdx, 1) or null
+   */
+  function getMonthYearFromAriaSource(input){
+    if(!input) return null; var s = String(input);
+    // If it's a full selector, collect all aria-label* values and join them
+    var allVals = [];
+    var re = /aria-label\*=\s*(["'])([\s\S]*?)\1/ig; var m; while((m=re.exec(s))){ allVals.push(m[2]); }
+    if (allVals.length) s = allVals.join(' ');
+    s = normalizeTextSpaces(s);
+    // Try "Month D, YYYY" (comma optional)
+    var m1 = s.match(/\b([A-Za-z]+)\s+(\d{1,2})(?:,\s*|\s+)(\d{4})\b/);
+    if (m1){ var mi1 = monthIndexFromName(m1[1]); var y1=+m1[3]; if(mi1>=0 && y1>=1900) return new Date(y1, mi1, 1); }
+    // Try "D Month YYYY"
+    var m2 = s.match(/\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b/);
+    if (m2){ var mi2 = monthIndexFromName(m2[2]); var y2=+m2[3]; if(mi2>=0 && y2>=1900) return new Date(y2, mi2, 1); }
     return null;
-}
+  }
 
-/**
- * Checks if a given CSS selector string matches the expected aria-label date format.
- * The format is: "[aria-label*='<Day of month (no leading zeroes)> <Month name> <Year>']"
- * It now also recognizes an optional dot '.' after the year.
- *
- * @param {string} selector The CSS selector string to validate.
- * @returns {boolean} True if the selector matches the format, false otherwise.
- */
-function isDateSelector(selector) {
-    const regex = /^\[aria-label\*=(["'])([A-Za-z]+)\s+(\d{1,2})(?:,\s*|\s+)(\d{4})\.?\1\]$/i;
-    return regex.test(selector);
-}
+  function simulateClick(el){ if(el){ try{ el.click(); } catch(_){} } }
 
-// Expose functions to the global window object for access from other content scripts
-window.skyscannerDates = {
-    scrollToDate: scrollToDate,
-    isDateSelector: isDateSelector
-};
+  function findVisibleMonthHeaders(){
+    var nodes = Array.prototype.slice.call(document.querySelectorAll('[aria-label]'));
+    var out = [];
+    for (var i=0;i<nodes.length;i++){
+      var a = nodes[i].getAttribute('aria-label')||''; var d = getMonthYearFromAriaSource(a);
+      if (d && isElementVisible(nodes[i])) out.push({el:nodes[i], d});
+    }
+    out.sort(function(a,b){ return a.d - b.d; });
+    return out;
+  }
+
+  /* ======================= Core ======================= */
+  async function scrollToDate(cssSelector, options){
+    options = options || {};
+    var maxNavigationAttempts = options.maxNavigationAttempts || 36; // up to 3 years
+    var postClickWaitMs = options.postClickWaitMs || 700;
+
+    // Normalize selector year token behavior and try fast path
+    cssSelector = normalizeAriaLabelDateSelector(cssSelector);
+    console.log('[skyscannerDates.scrollToDate] target:', cssSelector);
+
+    var target = document.querySelector(cssSelector);
+    if (target){
+      if (isElementVisible(target)) return target;
+      scrollElementIntoView(target); await wait(400);
+      if (isElementVisible(target)) return target;
+    }
+
+    // Determine target month from the selector itself
+    var targetMonthDate = getMonthYearFromAriaSource(cssSelector);
+    if (!targetMonthDate){ console.warn('[skyscannerDates] Could not parse month/year from selector:', cssSelector); return null; }
+
+    var nextBtnSel = "button[aria-label*='Next month'], [data-testid*='next-month'], button[aria-label*='Next']";
+    var prevBtnSel = "button[aria-label*='Previous month'], [data-testid*='prev'], [data-testid*='previous-month'], button[aria-label*='Previous']";
+
+    var attempts = 0; var direction = 'auto'; var flipped = false;
+
+    while(attempts < maxNavigationAttempts){
+      // Re-check for the date cell each loop
+      var hit = document.querySelector(cssSelector);
+      if (hit){
+        if (!isElementVisible(hit)){ scrollElementIntoView(hit); await wait(250); }
+        if (isElementVisible(hit)) return hit;
+      }
+
+      // Determine direction using visible headers if available
+      var headers = findVisibleMonthHeaders();
+      var nextBtn = document.querySelector(nextBtnSel);
+      var prevBtn = document.querySelector(prevBtnSel);
+
+      if (!nextBtn && !prevBtn){
+        console.warn('[skyscannerDates] Calendar controls not found; is the picker open?');
+        break;
+      }
+
+      var btnToClick = nextBtn || prevBtn; // default safeguard
+      if (headers.length){
+        var earliest = headers[0].d; var latest = headers[headers.length-1].d;
+        if (targetMonthDate > latest) { btnToClick = nextBtn || prevBtn; direction='next'; }
+        else if (targetMonthDate < earliest) { btnToClick = prevBtn || nextBtn; direction='prev'; }
+        else {
+          // Target month is within the current range; small nudge next then prev if not found
+          btnToClick = nextBtn || prevBtn;
+          if (flipped) btnToClick = prevBtn || nextBtn;
+          flipped = !flipped;
+        }
+      }
+
+      if (!btnToClick){ break; }
+      simulateClick(btnToClick);
+      await wait(postClickWaitMs);
+      attempts++;
+    }
+
+    // Final re-check
+    target = document.querySelector(cssSelector);
+    if (target){ scrollElementIntoView(target); await wait(250); if (isElementVisible(target)) return target; }
+
+    console.warn('[skyscannerDates] Gave up after', attempts, 'attempts for', cssSelector);
+    return null;
+  }
+
+  function isDateSelector(selector){
+    var s = String(selector||'');
+    // Accept: [aria-label*='December 20, 2025'] OR [aria-label*="20 December 2025"]
+    var re1 = /^\[aria-label\*=(["'])([A-Za-z]+)\s+\d{1,2}(?:,\s*|\s+)\d{4}\1\]$/;
+    var re2 = /^\[aria-label\*=(["'])\d{1,2}\s+[A-Za-z]+\s+\d{4}\1\]$/;
+    return re1.test(s) || re2.test(s);
+  }
+
+  // Alias used by page_manipulator
+  async function ensureDateVisible(cssSelector, options){ return scrollToDate(cssSelector, options); }
+
+  window.skyscannerDates = { scrollToDate, isDateSelector, ensureDateVisible, normalizeAriaLabelDateSelector, getMonthYearFromAriaSource };
+  console.log('skyscanner_dates.js loaded (robust month/year parsing & navigation).');
+})(window);
