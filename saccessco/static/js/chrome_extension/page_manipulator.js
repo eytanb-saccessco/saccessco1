@@ -13,7 +13,7 @@
     var s = getComputedStyle(el);
     if (s.display === 'none' || s.visibility === 'hidden' || +s.opacity === 0) return false;
     var r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+    return r.width > 0 && r.height > 0;
   }
   function _collapseSpaces(t){ t=String(t||''); return t.replace(/[\u00A0\u2007\u202F]/g,' ').replace(/\s+/g,' ').trim(); }
 
@@ -113,62 +113,107 @@
       }
       console.log("ParameterManager initialized with parameters:", this._parameters);
     }
+
     async get(key, promptMessage, isSensitive = false) {
-      if (key == null || key === 'undefined') return null;
-      if (key in this._parameters) {
-        console.log(`ParameterManager: Found '${key}' in internal parameters.`);
-        return this._parameters[key];
-      }
-      console.log(`ParameterManager: '${key}' not found. Attempting to prompt user.`);
-      if (!window.speechModule || typeof window.speechModule.askUserInput !== 'function') {
-        console.error(`ParameterManager: window.speechModule.askUserInput is not available. Cannot prompt user for '${key}'.`);
+      if (key == null || key === 'undefined') {
         return null;
       }
+
+      // Return if provided in parameters
+      if (Object.prototype.hasOwnProperty.call(this._parameters, key)) {
+        console.log("ParameterManager: Found '%s' in parameters.", key);
+        return this._parameters[key];
+      }
+
+      // Heuristic: treat a string that looks like a literal value as the value itself (avoid prompting)
+      if (typeof key === 'string' && /[\s,()]/.test(key)) {
+        console.log("ParameterManager: Treating '%s' as a literal value (no prompt).", key);
+        return key;
+      }
+
+      console.log("ParameterManager: '%s' missing. Attempting to prompt user.", key);
+
+      if (!window.speechModule || typeof window.speechModule.askUserInput !== 'function') {
+        console.error("ParameterManager: window.speechModule.askUserInput is not available. Cannot prompt user for '%s'.", key);
+        return null;
+      }
+
       try {
-        const defaultPrompt = `Please provide the value for ${key}:`;
-        const finalPromptMessage = promptMessage || defaultPrompt;
-        const userInput = await window.speechModule.askUserInput(finalPromptMessage, isSensitive);
-        if (userInput === null || typeof userInput === 'undefined' || (typeof userInput === 'string' && userInput.trim() === '')) {
-          const message = `Input for '${key}' was not provided or cancelled. Action may be incomplete.`;
-          console.warn("ParameterManager:", message);
+        var defaultPrompt = "Please provide the value for " + key + ":";
+        var finalPromptMessage = promptMessage || defaultPrompt;
+        var userInput = await window.speechModule.askUserInput(finalPromptMessage, !!isSensitive);
+
+        if (userInput === null || typeof userInput === 'undefined' ||
+            (typeof userInput === 'string' && userInput.trim() === '')) {
+          var cancellationMessage = "Input for '" + key + "' was not provided or cancelled. Action may be incomplete.";
+          console.warn("ParameterManager:", cancellationMessage);
           if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
-            window.chatModule.addMessage("Saccessco", message);
+            window.chatModule.addMessage("Saccessco", cancellationMessage);
           }
           return null;
         }
+
+        console.log("ParameterManager: Storing user input for '%s'.", key);
         this._parameters[key] = userInput;
         return userInput;
-      } catch (e) {
-        console.error(`ParameterManager: Error while prompting user for '${key}':`, e);
+      } catch (error) {
+        console.error("ParameterManager: Error while prompting '%s':", key, error);
         if (window.chatModule && typeof window.chatModule.addMessage === 'function') {
-          window.chatModule.addMessage("Saccessco", `Error retrieving input for '${key}': ${e && e.message ? e.message : 'Unknown error.'}`);
+          var msg = "Error retrieving input for '" + key + "': " + (error && error.message ? error.message : "Unknown error.");
+          window.chatModule.addMessage("Saccessco", msg);
         }
         return null;
       }
     }
-    set(key, value) { this._parameters[key] = value; }
-    getAll() { return { ...this._parameters }; }
-  }
-
-  // Mock for manual testing if speechModule not present
-  if (!window.speechModule || typeof window.speechModule.askUserInput !== 'function') {
-    window.speechModule = window.speechModule || {};
-    window.speechModule.askUserInput = async function (message, sensitive) {
-      console.log("(MOCK) askUserInput:", message, "Sensitive:", !!sensitive);
-      return new Promise(function (resolve) {
-        var mockInput = prompt("(MOCK UI) " + message + "\n(Type 'null' to simulate no input/cancel)");
-        resolve(mockInput === 'null' ? null : mockInput);
-      });
-    };
-    console.log("Mock speechModule.askUserInput initialized.");
-  }
+  } // <-- IMPORTANT: closes class parameterManager
 
   /* ---------------- Trip type guard (One way vs Return/Roundtrip) ---------------- */
-  function _findClickableContainsText(text){ if(!text) return null; var want=_collapseSpaces(String(text).toLowerCase()); var nodes=Array.prototype.slice.call(document.querySelectorAll('button,[role="button"],[role="tab"],[data-testid],li,span,a')).filter(_visible); function norm(n){return _collapseSpaces((n.innerText||n.textContent||'').toLowerCase());} for(var i=0;i<nodes.length;i++){ if(norm(nodes[i]).indexOf(want)!==-1) return nodes[i]; } return null; }
-  async function _openTripTypeMenuOnce(){ var triggers=["[data-testid*='trip']","[aria-label*='Trip' i]","[aria-label*='Travel' i]"]; for(var i=0;i<triggers.length;i++){ if(_clickIfVisible(triggers[i])){ await _sleep(150); return true; } } var chip=_findClickableContainsText('one way')||_findClickableContainsText('roundtrip')||_findClickableContainsText('return')||_findClickableContainsText('round trip'); if(chip){ _robustClick(chip); await _sleep(150); return true; } return false; }
-  function _findTripOptionByMode(mode){ mode=(mode||'RETURN').toUpperCase(); var map={ RETURN:["[data-testid='RETURN']","[data-testid='ROUNDTRIP']","[data-testid='ROUND_TRIP']"], ONE_WAY:["[data-testid='ONE_WAY']","[data-testid='ONEWAY']"], MULTICITY:["[data-testid='MULTICITY']","[data-testid='MULTI_CITY']"] }; var texts={ RETURN:['Roundtrip','Round trip','Return'], ONE_WAY:['One way','One-way'], MULTICITY:['Multi-city','Multi city'] }; var sels=map[mode]||[]; for(var i=0;i<sels.length;i++){ var el=_qVisible(sels[i]); if(el) return el; } var labels=texts[mode]||[]; for(var j=0;j<labels.length;j++){ var el2=_findClickableContainsText(labels[j]); if(el2) return el2; } return null; }
-  async function _ensureTripMode(mode){ var opt=_findTripOptionByMode(mode); if(opt){ _robustClick(opt); await _sleep(120); return true; } var opened=await _openTripTypeMenuOnce(); if(opened){ await _sleep(120); opt=_findTripOptionByMode(mode); if(opt){ _robustClick(opt); await _sleep(150); return true; } } var fallback=_findClickableContainsText((String(mode).toUpperCase()==='RETURN')?'round':(String(mode).toUpperCase()==='ONE_WAY')?'one way':'multi'); if(fallback){ _robustClick(fallback); await _sleep(120); return true; } return false; }
-  function _selectorImpliesReturn(selector){ var s=String(selector||'').toLowerCase(); return s.indexOf('return')!==-1 || s.indexOf('roundtrip')!==-1 || s.indexOf('round-trip')!==-1 || s.indexOf("return-btn")!==-1; }
+  function _findClickableContainsText(text){
+    if(!text) return null;
+    var want=_collapseSpaces(String(text).toLowerCase());
+    var nodes=Array.prototype.slice.call(document.querySelectorAll('button,[role="button"],[role="tab"],[data-testid],li,span,a')).filter(_visible);
+    function norm(n){return _collapseSpaces((n.innerText||n.textContent||'').toLowerCase());}
+    for(var i=0;i<nodes.length;i++){ if(norm(nodes[i]).indexOf(want)!==-1) return nodes[i]; }
+    return null;
+  }
+  async function _openTripTypeMenuOnce(){
+    var triggers=["[data-testid*='trip']","[aria-label*='Trip' i]","[aria-label*='Travel' i]"];
+    for(var i=0;i<triggers.length;i++){ if(_clickIfVisible(triggers[i])){ await _sleep(150); return true; } }
+    var chip=_findClickableContainsText('one way')||_findClickableContainsText('roundtrip')||_findClickableContainsText('return')||_findClickableContainsText('round trip');
+    if(chip){ _robustClick(chip); await _sleep(150); return true; }
+    return false;
+  }
+  function _findTripOptionByMode(mode){
+    mode=(mode||'RETURN').toUpperCase();
+    var map={
+      RETURN:["[data-testid='RETURN']","[data-testid='ROUNDTRIP']","[data-testid='ROUND_TRIP']"],
+      ONE_WAY:["[data-testid='ONE_WAY']","[data-testid='ONEWAY']"],
+      MULTICITY:["[data-testid='MULTICITY']","[data-testid='MULTI_CITY']"]
+    };
+    var texts={ RETURN:['Roundtrip','Round trip','Return'], ONE_WAY:['One way','One-way'], MULTICITY:['Multi-city','Multi city'] };
+    var sels=map[mode]||[];
+    for(var i=0;i<sels.length;i++){ var el=_qVisible(sels[i]); if(el) return el; }
+    var labels=texts[mode]||[];
+    for(var j=0;j<labels.length;j++){ var el2=_findClickableContainsText(labels[j]); if(el2) return el2; }
+    return null;
+  }
+  async function _ensureTripMode(mode){
+    var opt=_findTripOptionByMode(mode);
+    if(opt){ _robustClick(opt); await _sleep(120); return true; }
+    var opened=await _openTripTypeMenuOnce();
+    if(opened){
+      await _sleep(120);
+      opt=_findTripOptionByMode(mode);
+      if(opt){ _robustClick(opt); await _sleep(150); return true; }
+    }
+    var fallback=_findClickableContainsText((String(mode).toUpperCase()==='RETURN')?'round':(String(mode).toUpperCase()==='ONE_WAY')?'one way':'multi');
+    if(fallback){ _robustClick(fallback); await _sleep(120); return true; }
+    return false;
+  }
+  function _selectorImpliesReturn(selector){
+    var s=String(selector||'').toLowerCase();
+    return s.indexOf('return')!==-1 || s.indexOf('roundtrip')!==-1 || s.indexOf('round-trip')!==-1 || s.indexOf("return-btn")!==-1;
+  }
 
   /* ---------------- Dates: via window.skyscannerDates ---------------- */
   function _isDateSelector(selector) {
@@ -258,16 +303,38 @@
 
       var startTime = Date.now();
       var deadline = startTime + (timeoutMs || 10000);
-      var cands = _selectorCandidates(selector);
+
+      // Build candidate selector list (use helper if available; else just the given selector)
+      var cands = [selector];
+      try {
+        if (typeof _selectorCandidates === 'function') {
+          var sc = _selectorCandidates(selector);
+          if (Array.isArray(sc) && sc.length) cands = sc;
+        }
+      } catch (_) { /* ignore; keep default */ }
+
+      var lastFound = null;
 
       while (Date.now() < deadline) {
         var element = null;
-        for (var k=0;k<cands.length && !element;k++){
-          try { element = document.querySelector(cands[k]); } catch (e) { element = null; }
+
+        for (var k = 0; k < cands.length && !element; k++) {
+          var cand = cands[k];
+          try {
+            // Prefer a visible match among all matches; else remember the first match
+            var list = Array.prototype.slice.call(document.querySelectorAll(cand));
+            if (list.length) {
+              var vis = list.find(_visible);
+              element = vis || list[0];
+            }
+          } catch (e) { /* ignore */ }
         }
+
         if (element) {
-          element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+          lastFound = element;
+          try { element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' }); } catch (_) {}
           await _sleep(100);
+
           if (_visible(element)) {
             var duration = Date.now() - startTime;
             console.log('PageManipulator: element "%s" visible in %dms.', selector, duration);
@@ -275,7 +342,14 @@
             return element;
           }
         }
+
         await _sleep(checkIntervalMs || 100);
+      }
+
+      // Last-chance: if we ever found a node, return it anyway so the action can attempt (robustClick often still works)
+      if (lastFound) {
+        console.warn('PageManipulator: returning non-asserted element for "%s" (visibility uncertain).', selector);
+        return lastFound;
       }
 
       var errorMsg = 'PageManipulator: timeout waiting for "' + selector + '" after ' + (timeoutMs || 10000) + 'ms.';
@@ -398,7 +472,7 @@
       if (!element) return { success: false, error: "enter: element not found." };
       try {
         var kd = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-        var ku = new KeyboardEvent('keyup', { key: 'Enter', bubbles: true, cancelable: true });
+        var ku = new KeyboardEvent('keyup',   { key: 'Enter', bubbles: true, cancelable: true });
         element.dispatchEvent(kd);
         element.dispatchEvent(ku);
         console.log('PageManipulator: Simulated Enter on element.');
@@ -479,7 +553,7 @@
             continue;
           }
 
-          // SPECIAL: If this step is trying to click the Flights tab, handle with tolerant logic
+          // SPECIAL: Flights tab tolerant click
           if (step.action === 'click' && (_isFlightsSelector(step.selector) || /\baria-label=\s*['"]Flights['"]/i.test(String(step.selector)))) {
             var flightsTab = _findFlightsTab();
             if (flightsTab) {
@@ -516,12 +590,12 @@
               if (step.action === 'click') {
                 var ok = _fallbackClickByText(_extractAriaText(step.selector));
                 if (!ok) { // As a last resort, try by whole selector literal (useful for [title='Flights'])
-                  ok = _fallbackClickByText(step.selector.replace(/^[^'\"]*['\"]|['\"][^'\"]*$/g,''));
+                  ok = _fallbackClickByText(step.selector.replace(/^[^'"]*['"]|['"][^'"]*$/g,''));
                 }
                 if (ok) {
                   individualActionResults.push({ action: step.action, selector: step.selector + " (fallback text)", value: null, success: true });
                   await _sleep(40);
-                  continue; // move to next plan step
+                  continue;
                 }
               }
               actionResult = { success: false, error: 'Element "' + step.selector + '" not found/visible for "' + step.action + '".' };

@@ -48,13 +48,40 @@ For each distinct function or complex usage scenario identified on the page (fro
         * ** 3. any attribute containing 'testid' that the element has,
         * ** 4. non-obfuscated class names
         * ** 5. when selecting an option in a dropdown, and the user provided info about the desired option, 
-        * ** 5.1 use a css selector of the form: '[value*="<user input>"]'
-        * **`data`**:
-            * If the action requires a dynamic value (e.g., text to type, a value to select), this should be a **string representing the name of a parameter** that will be provided at execution time (e.g., `"username"`, `"search_query"`).
-            * If the action does not require dynamic data (e.g., a simple click, scrolling), this should be `null`.
-
-    * **`parameters`**: A JSON object containing key-value pairs. Each key *must* correspond to a `data` parameter name used in the `plan`. The Value should be a **placeholder string or example value** that clearly indicates what kind of data is expected for that parameter (e.g., `"your_username_here"`, `"Bohemian Rhapsody by Queen"`).
-    * ** **Mandatory First Step for Date Pickers:** If the plan involves selecting a departure date, the **first step in the plan MUST be a `click` action on the departure date button**, using the selector `[data-testid='depart-btn']`. If the plan involves selecting a return date, the **first step in the plan MUST be a `click` action on the return date button**, using the selector `[data-testid='return-btn']`. This ensures the correct date picker is open before any subsequent date-related actions.
+        Do not invent option labels. Only click options that actually exist in the DOM.
+        Prefer “contains” matching (case-insensitive) over exact matches.
+        Use these attribute sources in order of preference (whichever exists on the option items):
+        aria-label → [aria-label*="<user input>" i]
+        text content (fallback when attributes are absent)
+        data-testid → [data-testid*="<user input>" i]
+        value (only if present) → [value*="<user input>" i]
+        If no option contains the user’s text, select the first visible option in the list.
+        Skip non-option utilities (e.g. “Include nearby airports” toggles) if present.
+        * ** 6. When the user asks to set origin or destination:      
+        Open/focus the input
+        Origin: click the origin control, then type:
+        {"action":"click","selector":"#OriginButton, [id*='OriginButton'], [id*='Origin']","data":null}
+        {"action":"typeInto","selector":"#originInput-input, [id*='originInput']","data":"origin_city"}
+        Destination: click the destination control, then type:
+        {"action":"click","selector":"#DestinationButton, [id*='DestinationButton'], [id*='Destination']","data":null}
+        {"action":"typeInto","selector":"#destinationInput-input, [id*='destinationInput']","data":"destination_city"}
+        Wait for the autosuggest menu
+        (listbox appears under the input; ID is typically *Input-menu)
+        {"action":"waitForElement","selector":"[id*='originInput-menu'], [id*='destinationInput-menu'], [role='listbox']","data":null}
+        Choose the best-match option by “contains”; else choose first
+        Preferred (aria-label contains, case-insensitive):
+        {"action":"click","selector":"[id*='originInput-item'][aria-label*='{{origin_city}}' i], [role='option'][aria-label*='{{origin_city}}' i]","data":null}
+        Fallbacks (try in order):
+        
+        {"action":"click","selector":"[id*='originInput-item'][data-testid*='{{origin_city}}' i], [role='option'][data-testid*='{{origin_city}}' i]","data":null}
+        {"action":"click","selector":"[id*='originInput-item'][value*='{{origin_city}}' i], [role='option'][value*='{{origin_city}}' i]","data":null}
+        
+        
+        Final fallback (always succeeds): click the first option
+        
+        {"action":"click","selector":"#originInput-item-0, [id^='originInput-item-'], [id*='originInput-menu'] [role='option']:first-child","data":null}
+    
+        Use the analogous selectors for destination (replace originInput → destinationInput).
 
 **Available DOM Element Actions (and their usage in `plan` steps):**
 
